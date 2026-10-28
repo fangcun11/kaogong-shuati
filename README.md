@@ -43,6 +43,13 @@ Go + SQLite 后端 + 本地题库的考公刷题全栈应用：模块树刷题�
 
 - 首次启动会自动创建 `data/kaogong.db`，重组并导入题库/材料，创建第一个管理员；完整说明见 [`docs/go-backend.md`](docs/go-backend.md)
 - AI 功能需在「AI 设置」页配置 base_url + api_key（DeepSeek/通义/GLM/OpenAI/本地 Ollama 等 OpenAI 兼容网关均可）；API key 加密存储，普通用户不能修改全局配置
+- **Vue3 迁移版**：`web/` 为 Vue3 + Vite + TypeScript 工程，构建后访问 `/vue/`；旧版 `/` 仍保留作为回退：
+
+  ```powershell
+  npm --prefix web install
+  npm --prefix web run build
+  ```
+
 - Android 打包：`app/` 为 Capacitor 工程，完整构建步骤见 [`BUILD_MANUAL.md`](BUILD_MANUAL.md)（含第三方构建者的 Debug 包路线）
 
 ## 目录结构

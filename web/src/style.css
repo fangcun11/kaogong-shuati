@@ -1,0 +1,31 @@
+.vue-shell {
+  min-height: 100vh;
+}
+
+.vue-view {
+  min-height: 100vh;
+}
+
+#topbar-right {
+  width: auto;
+  gap: 2px;
+}
+
+#bottom-nav .nav-item {
+  text-decoration: none;
+}
+
+#bottom-nav .nav-item .nav-ico {
+  display: inline-flex;
+}
+
+#bottom-nav .nav-item .nav-ico .o,
+#bottom-nav .nav-item .nav-ico .f {
+  display: contents;
+}
+
+@media (min-width: 720px) {
+  #view {
+    max-width: 760px;
+  }
+}

@@ -9,7 +9,8 @@
     },
     "scripts": {
         "build:assets": "node build-app-assets.mjs app-assets",
-        "build:skills": "node build-skill-bundle.mjs"
+        "build:skills": "node build-skill-bundle.mjs",
+        "build:vue": "npm --prefix web run build"
     },
     "dependencies": {
         "sharp": "^0.35.3"

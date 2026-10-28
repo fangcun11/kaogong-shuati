@@ -1,0 +1,38 @@
+import { createRouter, createWebHashHistory } from 'vue-router'
+import { loadSession, session } from '../stores/session'
+import HomeView from '../views/HomeView.vue'
+import LoginView from '../views/LoginView.vue'
+import SubjectView from '../views/SubjectView.vue'
+import PlaceholderView from '../views/PlaceholderView.vue'
+
+const router = createRouter({
+  history: createWebHashHistory(),
+  routes: [
+    { path: '/', name: 'home', component: HomeView, meta: { title: '没钱考什么公' } },
+    { path: '/login', name: 'login', component: LoginView, meta: { title: '登录 · 没钱考什么公', public: true } },
+    { path: '/subject/:name', name: 'subject', component: SubjectView, meta: { title: '题库' } },
+    { path: '/papers', name: 'papers', component: PlaceholderView, meta: { title: '智能组卷' } },
+    { path: '/wrong', name: 'wrong', component: PlaceholderView, meta: { title: '错题本' } },
+    { path: '/favorites', name: 'favorites', component: PlaceholderView, meta: { title: '收藏' } },
+    { path: '/custom', name: 'custom', component: PlaceholderView, meta: { title: '自定义题库' } },
+    { path: '/notes', name: 'notes', component: PlaceholderView, meta: { title: '笔记' } },
+    { path: '/ai', name: 'ai', component: PlaceholderView, meta: { title: 'AI 设置' } },
+  ],
+})
+
+router.beforeEach(async (to) => {
+  if (!session.ready) await loadSession()
+  if (!to.meta.public && !session.user) {
+    return { name: 'login', query: { redirect: to.fullPath } }
+  }
+  if (to.name === 'login' && session.user) {
+    return { name: 'home' }
+  }
+  return true
+})
+
+router.afterEach((to) => {
+  document.title = String(to.meta.title || '没钱考什么公')
+})
+
+export default router

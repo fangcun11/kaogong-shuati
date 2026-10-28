@@ -24,7 +24,16 @@ func (s *Server) staticHandler() http.Handler {
 			return
 		}
 		info, err := os.Stat(file)
-		if err != nil || info.IsDir() {
+		if err == nil && info.IsDir() {
+			// A directory route (notably /vue/) serves its own index before
+			// the legacy SPA fallback.
+			candidate := filepath.Join(file, "index.html")
+			if cinfo, cerr := os.Stat(candidate); cerr == nil && !cinfo.IsDir() {
+				file = candidate
+			} else {
+				file = filepath.Join(root, "index.html")
+			}
+		} else if err != nil {
 			// SPA fallback; do not turn missing assets into HTML.
 			if strings.HasPrefix(r.URL.Path, "/api/") {
 				writeError(w, http.StatusNotFound, "NOT_FOUND", "接口不存在")
