@@ -127,7 +127,7 @@ web/src/
 | `#/notes` | 笔记 | `GET /api/notes`、`DELETE /api/notes` |
 | `#/question/:id` | 题目详情（内置题 / `custom-*`） | `GET /api/question?id=` |
 | `#/custom` | 自定义批次 | `GET /api/custom/batches`、`PUT/DELETE /api/custom/batch` |
-| `#/custom/import` | 文本导入 | `POST /api/custom/import` |
+| `#/custom/import` | 文件/文本导入（PDF/Excel/Word/TXT/JSON） | `POST /api/custom/import`、`POST /api/ai/structure`、`POST /api/ai/ocr` |
 | `#/ai` | AI 设置 | `GET /api/ai/agents`、`PUT /api/ai/agents/{id}`、`POST /api/ai/agents/{id}/test` |
 
 ## 5. 关键实现细节
@@ -188,17 +188,27 @@ POST /api/records { questionId, subject, chapter, type, selected, correct, costM
 
 ### 自定义导入
 
-`CustomImportView.vue` 通过 Vite 直接引入：
+`CustomImportView.vue` 通过 Vite 直接引入旧版共享解析器（纯浏览器 ES module）：
 
 ```ts
-import { parseTxt } from '../../../public/lib/custom-parser.js'
+import { parseTxt, parseExcel, docxToText, aiStructure, dedupeQuestions } from '../../../public/lib/custom-parser.js'
 ```
 
-这是旧版共享的纯浏览器 ES module，复用它的文本解析。当前支持：
+支持的文件与解析路径：
 
-- 粘贴文本
-- `.txt` / `.md`
+- 粘贴文本、`.txt` / `.md`：`parseTxt`
 - `.json`（数组或 `{questions: []}`）
+- `.xlsx` / `.xls`：`XLSX.read` → `sheet_to_json(header:1)` → `parseExcel`（表头固定列确定性映射；无表头则取自由文本走结构化）
+- `.docx`：`docxToText` 提取正文（`.doc` 旧二进制格式不支持）
+- `.pdf`：pdf.js 抽文本层；文本页逐页结构化，扫描页渲染成 JPEG 后走 `POST /api/ai/ocr`（依赖启用「识图转写员」），单页失败记为待人工修正条目
+- 多文件可一次选择，题干/材料/选项/答案/解析字段与文本导入一致
+
+「解析方式」两种：
+
+- **AI 智能导入**（默认）：按空行切块交给 `aiStructure` → `POST /api/ai/structure`（「题目解析员」智能体）；未配置 key、调用失败或结果为空时自动回退本地 `parseTxt`
+- **本地规则**：只用 `parseTxt` / `parseExcel`，不调用 AI
+
+PDF 文本层可用题数少于 5 时也会转去结构化，避免 PDF 断行把整卷并成一道题。导入后仍可进入批次页人工修正。
 
 导入字段：
 
@@ -219,7 +229,7 @@ import { parseTxt } from '../../../public/lib/custom-parser.js'
 }
 ```
 
-Excel/Word/PDF 仍走旧版路径；不要假装 Vue 已支持。
+静态服务对 `.mjs` / `.wasm` 显式设置 MIME（`internal/api/static.go`），否则 pdf.js 的 ES module 在 Windows 下会被当成 `text/plain` 拒绝加载。
 
 ### AI 设置
 
@@ -243,6 +253,7 @@ Excel/Word/PDF 仍走旧版路径；不要假装 Vue 已支持。
 - 智能组卷配置 + 生成
 - 自定义批次列表、改名/删除、练习
 - 文本/JSON 导入
+- Excel（`.xlsx/.xls`）、Word（`.docx`）、PDF（文本层 + 扫描页 OCR）导入，多文件一次选择，AI/本地两种解析方式
 - AI 智能体列表/编辑/测试 UI
 - 答题卡/背题/完成页
 - 自定义题详情（`custom-*`，含材料组材料借用与题干/材料图片）
@@ -250,7 +261,8 @@ Excel/Word/PDF 仍走旧版路径；不要假装 Vue 已支持。
 
 ### 未完成
 
-- Excel/Word/PDF 导入
+- PDF 图表题截图裁剪（旧版会按空白探测裁题图，Vue 版暂未迁移）
+- 旧版 `.doc` / `.doc` 二进制 Word 支持
 - 主观题输入和 AI 批改页面（申论/综应）
 - 结果页题目列表、错题回顾、单题重做
 - 桌面端答题排版优化

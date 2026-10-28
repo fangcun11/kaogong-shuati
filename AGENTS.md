@@ -91,7 +91,7 @@ ref-skills/                  开源技能参考副本（运行时技能库在 DB
 | `/vue/#/notes` | 笔记列表、删除 | 可用 |
 | `/vue/#/question/:id` | 题目详情（内置题 + `custom-*` 自定义题） | 可用 |
 | `/vue/#/custom` | 自定义批次列表、改名/删除/开始刷题 | 可用 |
-| `/vue/#/custom/import` | TXT/Markdown/JSON 导入、预览 | 可用 |
+| `/vue/#/custom/import` | TXT/Markdown/JSON/Excel/Word/PDF 导入、多文件、预览 | 可用（PDF 扫描页需「识图转写员」） |
 | `/vue/#/ai` | AI 智能体列表、管理员编辑、测试 | 页面可用；真实网关未验证 |
 
 刷题页已支持：
@@ -124,9 +124,10 @@ ref-skills/                  开源技能参考副本（运行时技能库在 DB
    - 非管理员只读
    - API key 留空不覆盖
    - 测试结果/错误展示
-2. 自定义导入完整迁移：目前 Vue 只支持 TXT/Markdown/JSON；Excel/Word/PDF 仍走旧版。旧解析器在 `public/lib/custom-parser.js`，可复用 `parseTxt`，Excel/PDF 需要额外适配。
+2. 自定义导入已迁移 Excel/Word/PDF（多文件、AI/本地两种解析方式）；PDF 图表题截图裁剪仍未迁移（旧版 `computeFigureCrops`），旧 `.doc` 二进制格式仅旧版支持。
 
 > 自定义题详情已完成（`GET /api/question?id=custom-N`，归属校验；错题/收藏/笔记列表会带自定义题摘要）。
+> 自定义导入 E2E 已验证：Excel 3 题、Word+PDF+TXT 9 题、AI 未配 key 时回退本地，均通过（临时库 8092）。
 
 ### P1 — 完整刷题体验
 
@@ -214,7 +215,7 @@ git push origin main
 ## 9. 已知问题 / 技术债
 
 - 自定义题详情已接入 `GET /api/question?id=custom-*`；接口按 batch 归属校验，跨用户返回 404，材料组成员会借用组内持有者的材料。列表摘要（错题/收藏/笔记）依赖 `customQuestionSummary`，改动列表查询时不要退回只 JOIN `questions`。
-- Vue 自定义导入只覆盖文本和 JSON；PDF/Excel/Word 仍用旧版。
+- 自定义导入已覆盖 TXT/MD/JSON/Excel（`.xlsx/.xls`）/Word（`.docx`）/PDF（文本层 + 扫描页 OCR），多文件一次导入；PDF 图表题截图裁剪、旧 `.doc` 格式仍未迁移。静态服务必须给 `.mjs` 正确的 `text/javascript` MIME，否则 pdf.js ES module 加载失败（见 `internal/api/static.go` 与 `static_test.go`）。
 - AI 真实模型调用、API key 保存回读、错误分支未做真实网关回归。
 - `PracticeView` 的收藏 ID 已按 string 处理，避免自定义 ID 被 `Number()` 变成 NaN；后续改这里不要退回 number。
 - `SmartPaperView` 的弱项加权请求字段是简化版，需对照后端 `paper_handlers.go` 校验。

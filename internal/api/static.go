@@ -41,6 +41,14 @@ func (s *Server) staticHandler() http.Handler {
 			}
 			file = filepath.Join(root, "index.html")
 		}
+		switch strings.ToLower(filepath.Ext(file)) {
+		case ".mjs":
+			// Windows 注册表里通常没有 .mjs 的 MIME，ServeFile 会退成 text/plain，
+			// 浏览器按规范拒绝把它当 ES module 执行（pdf.js 等 vendor 模块依赖这一点）。
+			w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		case ".wasm":
+			w.Header().Set("Content-Type", "application/wasm")
+		}
 		http.ServeFile(w, r, file)
 	})
 }
