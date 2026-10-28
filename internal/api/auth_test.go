@@ -57,9 +57,7 @@ func testClient(t *testing.T, ts *httptest.Server) *http.Client {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := ts.Client()
-	c.Jar = jar
-	return c
+	return &http.Client{Transport: ts.Client().Transport, Jar: jar}
 }
 
 func TestLoginAndProtectedRoute(t *testing.T) {

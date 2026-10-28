@@ -358,7 +358,7 @@ func (s *Server) aiModelsProxy(w http.ResponseWriter, r *http.Request) {
 	if !strings.HasSuffix(base, "/v1") {
 		candidates = append(candidates, base+"/v1/models")
 	}
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := safeHTTPClient(30 * time.Second)
 	for _, u := range candidates {
 		req2, _ := http.NewRequestWithContext(r.Context(), http.MethodGet, u, nil)
 		req2.Header.Set("Accept", "application/json")
@@ -386,6 +386,21 @@ func (s *Server) aiModelsProxy(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeError(w, http.StatusBadGateway, "UPSTREAM", "获取模型列表失败")
+}
+
+func safeHTTPClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return fmt.Errorf("too many redirects")
+			}
+			if !safeOutboundURL(req.URL.String()) {
+				return fmt.Errorf("redirect to private address is not allowed")
+			}
+			return nil
+		},
+	}
 }
 
 func safeOutboundURL(raw string) bool {

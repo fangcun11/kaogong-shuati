@@ -2,9 +2,7 @@ package api
 
 import (
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -165,9 +163,64 @@ func (s *Server) generatePaper(w http.ResponseWriter, r *http.Request) {
 		"ok": true, "paperId": newPaperID(), "title": title, "subject": req.Subject,
 		"category": req.Category, "total": len(questions), "durationMinutes": duration,
 		"difficulty":   map[string]int{"min": diffMin, "max": diffMax},
-		"sourceCounts": map[string]int{"all": len(questions)}, "failedSources": []string{},
+		"sourceCounts": s.sourceCounts(r, picked), "failedSources": []string{},
 		"questions": questions, "notice": notice,
 	})
+}
+
+func (s *Server) sourceCounts(r *http.Request, ids []int64) map[string]int {
+	counts := map[string]int{"tikuA": 0, "tikuB": 0, "tikuC": 0, "tikuD": 0, "other": 0}
+	if len(ids) == 0 {
+		return counts
+	}
+	marks := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	args := make([]any, 0, len(ids))
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	rows, err := s.db.QueryContext(r.Context(), `
+		SELECT q.questionId, p.category FROM questions q
+		JOIN papers p ON p.id = q.paperId
+		WHERE q.questionId IN (`+marks+`) GROUP BY q.questionId`, args...)
+	if err != nil {
+		return counts
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var category string
+		if rows.Scan(&id, &category) == nil {
+			counts[sourceOfCategory(category)]++
+		}
+	}
+	return counts
+}
+
+func sourceOfCategory(category string) string {
+	if strings.Contains(category, "国考") {
+		return "tikuA"
+	}
+	liankao := map[string]bool{
+		"黑龙江": true, "吉林": true, "湖北": true, "新疆": true, "江西": true,
+		"河南": true, "天津": true, "重庆": true, "福建": true, "安徽": true,
+		"云南": true, "河北": true, "山西": true, "广西": true, "青海": true,
+		"陕西": true, "贵州": true, "湖南": true, "辽宁": true, "甘肃": true,
+		"海南": true, "内蒙古": true, "宁夏": true, "西藏": true, "四川": true,
+	}
+	if liankao[category] {
+		return "tikuB"
+	}
+	duli := map[string]bool{
+		"江苏": true, "浙江": true, "广东": true, "山东": true, "北京": true,
+		"上海": true, "深圳市考": true, "广州市考": true,
+	}
+	if duli[category] {
+		return "tikuC"
+	}
+	if category == "选调" || category == "政法干警" {
+		return "tikuD"
+	}
+	return "other"
 }
 
 func (s *Server) fetchQuestionsByIDs(r *http.Request, ids []int64) ([]questionJSON, error) {
@@ -288,6 +341,3 @@ func newPaperID() string {
 	}
 	return "paper_gen_" + hex.EncodeToString(b)
 }
-
-var _ = sql.ErrNoRows
-var _ = json.Valid

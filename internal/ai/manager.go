@@ -50,7 +50,9 @@ func NewManager(db *sql.DB, secret, webDir string) *Manager {
 	}
 	sum := sha256.Sum256([]byte(secret))
 	m := &Manager{db: db, secret: sum[:]}
-	_ = m.SeedDefaults(filepath.Join(webDir, "ai-agents.default.json"))
+	if db != nil {
+		_ = m.SeedDefaults(filepath.Join(webDir, "ai-agents.default.json"))
+	}
 	return m
 }
 

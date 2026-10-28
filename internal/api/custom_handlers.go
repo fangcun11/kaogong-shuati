@@ -280,6 +280,10 @@ func (s *Server) customQuestion(w http.ResponseWriter, r *http.Request) {
 	images := req.Images
 	if len(images) == 0 || !json.Valid(images) {
 		images = json.RawMessage("[]")
+		var existing string
+		if s.db.QueryRowContext(r.Context(), `SELECT images FROM custom_questions WHERE id = ?`, qid).Scan(&existing) == nil && json.Valid([]byte(existing)) {
+			images = json.RawMessage(existing)
+		}
 	}
 	answerIndex := int64(-1)
 	if req.AnswerIndex != nil {
@@ -397,8 +401,10 @@ func (s *Server) customAutoGroup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "grouped": grouped, "groupCount": groupCount, "total": total})
 }
 
+var htmlTagRE = regexp.MustCompile(`<[^>]+>`)
+
 func normalizeMaterial(s string) string {
-	s = regexp.MustCompile(`<[^>]+>`).ReplaceAllString(s, " ")
+	s = htmlTagRE.ReplaceAllString(s, " ")
 	return strings.Join(strings.Fields(s), " ")
 }
 
@@ -516,6 +522,58 @@ func customQuestionJSON(q customQuestionRow) map[string]any {
 	}
 }
 
+type customImage struct {
+	Role    string `json:"role"`
+	DataURL string `json:"dataUrl"`
+	URL     string `json:"url"`
+}
+
+func parseCustomImages(raw string) []customImage {
+	var images []customImage
+	if json.Unmarshal([]byte(raw), &images) == nil {
+		return images
+	}
+	var urls []string
+	if json.Unmarshal([]byte(raw), &urls) == nil {
+		out := make([]customImage, 0, len(urls))
+		for _, u := range urls {
+			out = append(out, customImage{DataURL: u})
+		}
+		return out
+	}
+	return nil
+}
+
+func customImagesHTML(images []customImage, role string) string {
+	var b strings.Builder
+	for _, im := range images {
+		if role != "" && im.Role != "" && im.Role != role {
+			continue
+		}
+		src := strings.TrimSpace(im.DataURL)
+		if src == "" {
+			src = strings.TrimSpace(im.URL)
+		}
+		if !(strings.HasPrefix(src, "data:image/") || strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://")) {
+			continue
+		}
+		b.WriteString(`<p><img src="`)
+		b.WriteString(htmlEscape(src))
+		b.WriteString(`" alt="题目图片"></p>`)
+	}
+	return b.String()
+}
+
+func customHTML(text string, images []customImage, role string) string {
+	body := htmlEscape(text)
+	body = strings.ReplaceAll(body, "\n", "<br>")
+	img := customImagesHTML(images, role)
+	if body == "" && img == "" {
+		return ""
+	}
+	return "<p>" + body + "</p>" + img
+}
+
 func groupCustomQuestions(rows []customQuestionRow, batchName, subject string) []map[string]any {
 	groups := map[string][]customQuestionRow{}
 	order := make([]string, 0)
@@ -539,14 +597,16 @@ func groupCustomQuestions(rows []customQuestionRow, batchName, subject string) [
 				break
 			}
 		}
+		holderImages := parseCustomImages(holder.Images)
 		for i, q := range members {
 			item := customQuestionJSON(q)
+			images := parseCustomImages(q.Images)
 			item["id"] = "custom-" + strconv.FormatInt(q.ID, 10)
 			item["questionId"] = "custom-" + strconv.FormatInt(q.ID, 10)
 			item["content"] = q.Prompt
-			item["contentHtml"] = "<p>" + htmlEscape(q.Prompt) + "</p>"
+			item["contentHtml"] = customHTML(q.Prompt, images, "stem")
 			item["material"] = holder.Material
-			item["materialHtml"] = "<p>" + htmlEscape(holder.Material) + "</p>"
+			item["materialHtml"] = customHTML(holder.Material, holderImages, "material")
 			item["type"] = "custom"
 			item["chapter"] = batchName
 			item["subjectName"] = subject

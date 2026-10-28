@@ -121,7 +121,7 @@ func (s *Server) fetchSkill(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_URL", "URL 不合法或指向内网")
 		return
 	}
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := safeHTTPClient(30 * time.Second)
 	res, err := client.Get(req.URL)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "UPSTREAM", "拉取失败")
