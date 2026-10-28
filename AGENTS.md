@@ -89,7 +89,7 @@ ref-skills/                  开源技能参考副本（运行时技能库在 DB
 | `/vue/#/wrong` | 错题本 | 可用 |
 | `/vue/#/favorites` | 收藏列表、取消收藏 | 可用 |
 | `/vue/#/notes` | 笔记列表、删除 | 可用 |
-| `/vue/#/question/:id` | 普通题详情 | 可用 |
+| `/vue/#/question/:id` | 题目详情（内置题 + `custom-*` 自定义题） | 可用 |
 | `/vue/#/custom` | 自定义批次列表、改名/删除/开始刷题 | 可用 |
 | `/vue/#/custom/import` | TXT/Markdown/JSON 导入、预览 | 可用 |
 | `/vue/#/ai` | AI 智能体列表、管理员编辑、测试 | 页面可用；真实网关未验证 |
@@ -118,16 +118,15 @@ ref-skills/                  开源技能参考副本（运行时技能库在 DB
 
 建议按下面顺序继续：
 
-### P0 — 自定义题详情和 AI 功能
+### P0 — AI 功能与导入补齐
 
-1. `QuestionDetailView` 目前遇到 `custom-*` ID 会返回“暂不支持”，因为 `internal/api/quiz_handlers.go` 的 `question` handler 明确拒绝 custom id。需要：
-   - 为 custom question 增加详情接口，或扩展 `/api/question?id=` 返回自定义题结构
-   - 前端详情页支持 custom 字段/图片
-2. AI 设置页的保存与测试尚未用真实 API key 验证；要检查：
+1. AI 设置页的保存与测试尚未用真实 API key 验证；要检查：
    - 非管理员只读
    - API key 留空不覆盖
    - 测试结果/错误展示
-3. 自定义导入完整迁移：目前 Vue 只支持 TXT/Markdown/JSON；Excel/Word/PDF 仍走旧版。旧解析器在 `public/lib/custom-parser.js`，可复用 `parseTxt`，Excel/PDF 需要额外适配。
+2. 自定义导入完整迁移：目前 Vue 只支持 TXT/Markdown/JSON；Excel/Word/PDF 仍走旧版。旧解析器在 `public/lib/custom-parser.js`，可复用 `parseTxt`，Excel/PDF 需要额外适配。
+
+> 自定义题详情已完成（`GET /api/question?id=custom-N`，归属校验；错题/收藏/笔记列表会带自定义题摘要）。
 
 ### P1 — 完整刷题体验
 
@@ -214,7 +213,7 @@ git push origin main
 
 ## 9. 已知问题 / 技术债
 
-- 自定义题详情 (`custom-*`) 未接入普通 question 接口；收藏/错题里点击自定义题可能提示不支持。
+- 自定义题详情已接入 `GET /api/question?id=custom-*`；接口按 batch 归属校验，跨用户返回 404，材料组成员会借用组内持有者的材料。列表摘要（错题/收藏/笔记）依赖 `customQuestionSummary`，改动列表查询时不要退回只 JOIN `questions`。
 - Vue 自定义导入只覆盖文本和 JSON；PDF/Excel/Word 仍用旧版。
 - AI 真实模型调用、API key 保存回读、错误分支未做真实网关回归。
 - `PracticeView` 的收藏 ID 已按 string 处理，避免自定义 ID 被 `Number()` 变成 NaN；后续改这里不要退回 number。

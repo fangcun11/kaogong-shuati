@@ -133,6 +133,91 @@ func (s *Server) customQuestions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"questions": questions})
 }
 
+// customQuestionDetail 返回单道自定义题详情（错题本/收藏/笔记点入重练用）。
+// 输出结构与旧 Node 后端 /api/question?custom-* 分支保持一致：
+// id/questionId 为字符串，type 为 "custom"，并附带 subject/chapter（批次名）。
+func (s *Server) customQuestionDetail(w http.ResponseWriter, r *http.Request, raw string) {
+	q, err := s.findCustomQuestion(r, raw)
+	if err == sql.ErrNoRows {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "题目不存在")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL", "读取题目失败")
+		return
+	}
+	var batchName, subject string
+	_ = s.db.QueryRowContext(r.Context(),
+		`SELECT name, subject FROM custom_batches WHERE id = ?`, q.BatchID).Scan(&batchName, &subject)
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		subject = "自定义"
+	}
+	material := q.Material
+	materialImages := parseCustomImages(q.Images)
+	if q.MaterialID != "" {
+		// 材料组里只有持有者带有材料文本，其余题按组归属借用同一份材料。
+		var holderMaterial, holderImages string
+		err := s.db.QueryRowContext(r.Context(), `
+			SELECT material, images FROM custom_questions
+			WHERE batch_id = ? AND material_id = ? AND TRIM(material) <> ''
+			ORDER BY id LIMIT 1`, q.BatchID, q.MaterialID).Scan(&holderMaterial, &holderImages)
+		if err == nil && strings.TrimSpace(holderMaterial) != "" {
+			material = holderMaterial
+			materialImages = parseCustomImages(holderImages)
+		}
+	}
+	stemImages := parseCustomImages(q.Images)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":           raw,
+		"questionId":   raw,
+		"type":         "custom",
+		"content":      q.Prompt,
+		"contentHtml":  customHTML(q.Prompt, stemImages, "stem"),
+		"material":     material,
+		"materialHtml": customHTML(material, materialImages, "material"),
+		"options":      parseOptions(q.Options),
+		"answer":       q.Answer,
+		"answerIndex":  q.AnswerIndex,
+		"analysis":     q.Analysis,
+		"subject":      subject,
+		"chapter":      batchName,
+		"batchId":      q.BatchID,
+	})
+}
+
+// customQuestionSummary 为错题/收藏/笔记列表提供自定义题摘要（题干 + 图片标记）。
+// 第二个返回值表示该 id 是否为当前用户可见的自定义题。
+func (s *Server) customQuestionSummary(r *http.Request, userID int64, rawID string) (string, bool) {
+	if !strings.HasPrefix(rawID, "custom-") {
+		return "", false
+	}
+	cid, err := strconv.ParseInt(strings.TrimPrefix(rawID, "custom-"), 10, 64)
+	if err != nil || cid <= 0 {
+		return "", false
+	}
+	var prompt, images string
+	err = s.db.QueryRowContext(r.Context(), `
+		SELECT q.prompt, q.images FROM custom_questions q
+		JOIN custom_batches b ON b.id = q.batch_id
+		WHERE q.id = ? AND b.user_id = ?`, cid, userID).Scan(&prompt, &images)
+	if err != nil {
+		return "", false
+	}
+	if len(parseCustomImages(images)) > 0 {
+		prompt += " [图]"
+	}
+	return truncateRunes(strings.TrimSpace(prompt), 80), true
+}
+
+func truncateRunes(s string, n int) string {
+	rs := []rune(s)
+	if len(rs) <= n {
+		return s
+	}
+	return string(rs[:n])
+}
+
 func (s *Server) customBatch(w http.ResponseWriter, r *http.Request) {
 	id := queryInt64(r, "id", 0)
 	if id <= 0 {

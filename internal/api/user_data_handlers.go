@@ -217,9 +217,14 @@ func (s *Server) wrongList(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var id, qtype int64
 		var qid, subject, chapter, created, content string
-		if err := rows.Scan(&id, &qid, &subject, &chapter, &created, &content, &qtype); err == nil {
-			list = append(list, map[string]any{"id": id, "questionId": numericID(qid), "subject": subject, "chapter": chapter, "time": created, "content": content, "type": qtype})
+		if err := rows.Scan(&id, &qid, &subject, &chapter, &created, &content, &qtype); err != nil {
+			continue
 		}
+		var typeOut any = qtype
+		if summary, ok := s.customQuestionSummary(r, u.ID, qid); ok {
+			content, typeOut = summary, "custom"
+		}
+		list = append(list, map[string]any{"id": id, "questionId": numericID(qid), "subject": subject, "chapter": chapter, "time": created, "content": content, "type": typeOut})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"list": list, "total": total, "offset": offset, "limit": limit, "hasMore": int64(offset+len(list)) < total})
 }
@@ -248,7 +253,7 @@ type favoriteItem struct {
 	Chapter    string `json:"chapter"`
 	Time       string `json:"time"`
 	Content    string `json:"content"`
-	Type       int64  `json:"type"`
+	Type       any    `json:"type"`
 }
 
 func (s *Server) favorites(w http.ResponseWriter, r *http.Request) {
@@ -308,9 +313,14 @@ func (s *Server) favorites(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var qid, subject, chapter, created, content string
 		var qtype int64
-		if err := rows.Scan(&qid, &subject, &chapter, &created, &content, &qtype); err == nil {
-			list = append(list, favoriteItem{QuestionID: numericID(qid), Subject: subject, Chapter: chapter, Time: created, Content: content, Type: qtype})
+		if err := rows.Scan(&qid, &subject, &chapter, &created, &content, &qtype); err != nil {
+			continue
 		}
+		var typeOut any = qtype
+		if summary, ok := s.customQuestionSummary(r, u.ID, qid); ok {
+			content, typeOut = summary, "custom"
+		}
+		list = append(list, favoriteItem{QuestionID: numericID(qid), Subject: subject, Chapter: chapter, Time: created, Content: content, Type: typeOut})
 	}
 	total := countRows(r, s, `SELECT COUNT(*) FROM favorites WHERE user_id = ?`, u.ID)
 	writeJSON(w, http.StatusOK, map[string]any{"list": list, "total": total, "offset": offset, "limit": limit, "hasMore": int64(offset+len(list)) < total})
@@ -342,7 +352,7 @@ type noteItem struct {
 	Note       string `json:"note"`
 	Time       string `json:"time"`
 	Content    string `json:"content"`
-	Type       int64  `json:"type"`
+	Type       any    `json:"type"`
 }
 
 func (s *Server) notes(w http.ResponseWriter, r *http.Request) {
@@ -416,9 +426,14 @@ func (s *Server) notes(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var qid, subject, chapter, note, updated, content string
 		var qtype int64
-		if err := rows.Scan(&qid, &subject, &chapter, &note, &updated, &content, &qtype); err == nil {
-			list = append(list, noteItem{QuestionID: numericID(qid), Subject: subject, Chapter: chapter, Note: note, Time: updated, Content: content, Type: qtype})
+		if err := rows.Scan(&qid, &subject, &chapter, &note, &updated, &content, &qtype); err != nil {
+			continue
 		}
+		var typeOut any = qtype
+		if summary, ok := s.customQuestionSummary(r, u.ID, qid); ok {
+			content, typeOut = summary, "custom"
+		}
+		list = append(list, noteItem{QuestionID: numericID(qid), Subject: subject, Chapter: chapter, Note: note, Time: updated, Content: content, Type: typeOut})
 	}
 	total := countRows(r, s, `SELECT COUNT(*) FROM notes WHERE user_id = ?`, u.ID)
 	writeJSON(w, http.StatusOK, map[string]any{"list": list, "total": total, "offset": offset, "limit": limit, "hasMore": int64(offset+len(list)) < total})

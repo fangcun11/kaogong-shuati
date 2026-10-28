@@ -125,7 +125,7 @@ web/src/
 | `#/wrong` | 错题本 | `GET /api/records/wrong` |
 | `#/favorites` | 收藏 | `GET /api/favorites`、`DELETE /api/favorites` |
 | `#/notes` | 笔记 | `GET /api/notes`、`DELETE /api/notes` |
-| `#/question/:id` | 题目详情 | `GET /api/question?id=` |
+| `#/question/:id` | 题目详情（内置题 / `custom-*`） | `GET /api/question?id=` |
 | `#/custom` | 自定义批次 | `GET /api/custom/batches`、`PUT/DELETE /api/custom/batch` |
 | `#/custom/import` | 文本导入 | `POST /api/custom/import` |
 | `#/ai` | AI 设置 | `GET /api/ai/agents`、`PUT /api/ai/agents/{id}`、`POST /api/ai/agents/{id}/test` |
@@ -176,6 +176,15 @@ POST /api/records { questionId, subject, chapter, type, selected, correct, costM
 - 答题卡状态：`current` / `todo` / `correct` / `wrong` / `answered`
 - 背题模式不选答案、不提交、不写记录，直接高亮正确项并显示解析
 - 结果页统计由 `answers` 派生，不依赖后端汇总
+
+### 自定义题详情
+
+`QuestionDetailView.vue` 对内置题和 `custom-*` 走同一个 `/api/question?id=` 入口：
+
+- 后端 `customQuestionDetail`（`internal/api/custom_handlers.go`）按 `custom_batches.user_id` 校验归属，跨用户返回 404
+- 返回结构与旧 Node 后端一致：`id`/`questionId` 为 `"custom-N"` 字符串、`type: "custom"`、`content`/`contentHtml`、`material`/`materialHtml`、`options`、`answer`、`answerIndex`、`analysis`、`subject`、`chapter`（批次名）
+- 材料组成员自身可能没有材料文本，详情会借用组内持有者的材料和材料图
+- 错题/收藏/笔记列表通过 `customQuestionSummary` 返回题干摘要（含 `[图]` 标记，截断 80 字），前端点击可直接进入详情
 
 ### 自定义导入
 
@@ -236,10 +245,11 @@ Excel/Word/PDF 仍走旧版路径；不要假装 Vue 已支持。
 - 文本/JSON 导入
 - AI 智能体列表/编辑/测试 UI
 - 答题卡/背题/完成页
+- 自定义题详情（`custom-*`，含材料组材料借用与题干/材料图片）
+- 错题/收藏/笔记列表中的自定义题摘要
 
 ### 未完成
 
-- `custom-*` 题目详情：后端 `GET /api/question` 目前拒绝 custom id；从收藏/错题点自定义题会提示“暂不支持”
 - Excel/Word/PDF 导入
 - 主观题输入和 AI 批改页面（申论/综应）
 - 结果页题目列表、错题回顾、单题重做

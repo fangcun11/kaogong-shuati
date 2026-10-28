@@ -455,9 +455,9 @@ func parseOptions(raw string) []string {
 }
 
 func (s *Server) question(w http.ResponseWriter, r *http.Request) {
-	raw := r.URL.Query().Get("id")
+	raw := strings.TrimSpace(r.URL.Query().Get("id"))
 	if strings.HasPrefix(raw, "custom-") {
-		writeError(w, http.StatusNotFound, "NOT_FOUND", "自定义题接口尚未迁移")
+		s.customQuestionDetail(w, r, raw)
 		return
 	}
 	id, err := strconv.ParseInt(raw, 10, 64)

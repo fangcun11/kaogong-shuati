@@ -10,7 +10,7 @@ interface WrongItem {
   chapter: string
   time: string
   content: string
-  type: number
+  type: number | string
 }
 
 const router = useRouter()

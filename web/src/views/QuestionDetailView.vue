@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
 
 interface Question {
-  id: number
-  questionId: number
+  id: number | string
+  questionId: number | string
+  type?: number | string
   chapter: string
+  subject?: string
   content: string
   contentHtml?: string
   material?: string
@@ -28,13 +30,11 @@ function optionText(text: string) {
   return String(text || '').replace(/^\s*[A-Ha-h][.、)]\s*/, '')
 }
 
+const isCustom = computed(() => question.value?.type === 'custom')
+
 onMounted(async () => {
   try {
     const id = String(route.params.id || '')
-    if (id.startsWith('custom-')) {
-      error.value = 'Vue 版暂不支持自定义题详情，请在旧版查看'
-      return
-    }
     question.value = await api<Question>(`/api/question?id=${encodeURIComponent(id)}`)
   } catch (e) {
     error.value = e instanceof Error ? e.message : '加载题目失败'
@@ -50,7 +50,8 @@ onMounted(async () => {
   <template v-else-if="question">
     <div class="q-meta">
       <span class="tag tag-chapter">{{ question.chapter || '题目' }}</span>
-      <span class="tag tag-type">难度 {{ question.difficulty || '—' }}</span>
+      <span v-if="isCustom" class="tag tag-type">自定义题</span>
+      <span v-else class="tag tag-type">难度 {{ question.difficulty || '—' }}</span>
     </div>
     <article class="q-card">
       <div v-if="question.material" class="q-material">
@@ -81,4 +82,7 @@ onMounted(async () => {
 
 <style scoped>
 .vue-detail-options { display: grid; gap: 10px; margin-top: 18px; }
+.q-material { margin: 0 0 16px; padding: 12px 14px; border-left: 3px solid var(--accent); background: var(--card-2); border-radius: 10px; }
+.q-material summary { cursor: pointer; color: var(--primary); font-weight: 700; font-size: 13px; }
+.q-material .q-content { margin-top: 8px; font-size: 14px; line-height: 1.7; }
 </style>
