@@ -433,6 +433,8 @@ func (s *Server) agentForUser(r *http.Request, agent *ai.Agent) *ai.Agent {
 			`SELECT text FROM user_skills WHERE user_id = ? AND name = ?`, u.ID, agent.Skill).Scan(&text)
 		if err == nil && strings.TrimSpace(text) != "" {
 			copyAgent.Skill = text
+		} else if builtin, info := s.ai.ResolveSkill(agent.Skill); info != nil {
+			copyAgent.Skill = builtin
 		}
 	}
 	return &copyAgent

@@ -42,6 +42,7 @@ type AgentView struct {
 type Manager struct {
 	db     *sql.DB
 	secret []byte
+	webDir string
 }
 
 func NewManager(db *sql.DB, secret, webDir string) *Manager {
@@ -49,7 +50,7 @@ func NewManager(db *sql.DB, secret, webDir string) *Manager {
 		secret = "kaogong-local-development-secret"
 	}
 	sum := sha256.Sum256([]byte(secret))
-	m := &Manager{db: db, secret: sum[:]}
+	m := &Manager{db: db, secret: sum[:], webDir: webDir}
 	if db != nil {
 		_ = m.SeedDefaults(filepath.Join(webDir, "ai-agents.default.json"))
 	}
@@ -159,6 +160,9 @@ func (m *Manager) View(a Agent) AgentView {
 
 func (m *Manager) view(a Agent) AgentView {
 	v := AgentView{Agent: a}
+	if _, info := m.ResolveSkill(a.Skill); info != nil {
+		v.SkillLoaded = info
+	}
 	if a.APIKey != "" {
 		k := a.APIKey
 		if len(k) > 8 {
