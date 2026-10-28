@@ -1,5 +1,7 @@
 # 公网部署指南（50 人测试版）
 
+> ⚠️ **2026-10 后端迁移说明**：本指南中的 Node/pm2 命令已失效。当前后端为 Go + SQLite，单二进制部署方式见 [`docs/go-backend.md`](docs/go-backend.md)；旧 Node 代码只保留在 Git 标签 `node-backend-final`。
+
 > 目标：让 50 个测试者在手机/电脑上通过 https://域名 访问你的刷题 App
 > 前提：登录+用户隔离（auth-user-isolation-design.md）、AI 密钥防护（ai-key-security.md）已按方案落地
 > 本机：Windows（PowerShell）；服务器：Ubuntu 22.04（本文所有命令以它为准）

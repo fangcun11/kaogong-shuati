@@ -1,5 +1,7 @@
 # 打包构建手册（Web 版 / Android App）
 
+> ⚠️ **2026-10 后端迁移说明**：后端已改为 Go + SQLite，旧 Node 启动命令 `node server.mjs` 已失效；新启动方式见 [`docs/go-backend.md`](docs/go-backend.md)。本手册保留 Android/Capacitor 构建步骤，Web 后端部分以新文档为准。
+
 > 涵盖两种构建路线：**① Web 版**（本地运行 / 服务器部署，零构建）和 **② Android App 打包**（Capacitor 套壳）
 > 适用读者：想自行构建或二次开发的开发者
 

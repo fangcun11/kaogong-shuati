@@ -1,4 +1,4 @@
-﻿/* ===== 考公刷题 - 前端逻辑（原生 JS SPA） ===== */
+/* ===== 考公刷题 - 前端逻辑（原生 JS SPA） ===== */
 'use strict';
 
 /* ===== 图片离线兜底（SW 不可用环境：Capacitor WebView） =====
@@ -90,7 +90,11 @@ const api = async (path, opts) => {
     const handler = await window.__LOCAL_API_PROMISE__;
     return handler(path, opts);
   }
-  const res = await fetch(path, opts);
+  const res = await fetch(path, { credentials: 'same-origin', ...(opts || {}) });
+  if (res.status === 401) {
+    location.href = '/login.html';
+    throw new Error('请先登录');
+  }
   if (!res.ok) {
     let msg = `请求失败 (${res.status})`;
     try { msg = (await res.json()).error || msg; } catch {}
@@ -5509,6 +5513,13 @@ document.addEventListener('click', (e) => {
 });
 
 $('#btn-back').onclick = goBack;
+const logoutBtn = $('#btn-logout');
+if (logoutBtn) {
+  logoutBtn.onclick = async () => {
+    try { await api('/api/auth/logout', { method: 'POST' }); } catch {}
+    location.replace('/login.html');
+  };
+}
 
 // ---------- 主题切换（墨蓝行政风 · 深浅双模式） ----------
 function currentTheme() {
