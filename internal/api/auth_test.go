@@ -92,6 +92,35 @@ func TestLoginAndProtectedRoute(t *testing.T) {
 	}
 }
 
+func TestChangePasswordRevokesSession(t *testing.T) {
+	ts, _ := newTestServer(t)
+	client := testClient(t, ts)
+	res := postJSON(t, client, ts.URL+"/api/auth/login", credentials{Username: "admin", Password: "admin123456"})
+	res.Body.Close()
+
+	res = postJSON(t, client, ts.URL+"/api/auth/password", changePasswordRequest{OldPassword: "admin123456", NewPassword: "new-password-123"})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("change password status = %d", res.StatusCode)
+	}
+	res.Body.Close()
+
+	res, err := client.Get(ts.URL + "/api/subjects")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("old session status = %d, want 401", res.StatusCode)
+	}
+	res.Body.Close()
+
+	client = testClient(t, ts)
+	res = postJSON(t, client, ts.URL+"/api/auth/login", credentials{Username: "admin", Password: "new-password-123"})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("new password login status = %d", res.StatusCode)
+	}
+	res.Body.Close()
+}
+
 func TestNonAdminCannotUseAdminRoute(t *testing.T) {
 	ts, _ := newTestServer(t)
 	admin := testClient(t, ts)
