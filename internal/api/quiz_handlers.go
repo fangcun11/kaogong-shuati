@@ -415,7 +415,7 @@ type questionJSON struct {
 	MaterialHTML string   `json:"materialHtml,omitempty"`
 	Module       string   `json:"module,omitempty"`
 	GroupID      string   `json:"groupId,omitempty"`
-	GroupIndex   int      `json:"groupIndex,omitempty"`
+	GroupIndex   int      `json:"groupIndex"`
 	GroupTotal   int      `json:"groupTotal,omitempty"`
 }
 

@@ -7,13 +7,14 @@ import (
 )
 
 type paperBuildOptions struct {
-	Subject string
-	Modules []moduleSpec
-	Sources []paperSource
-	Count   int
-	DiffMin int
-	DiffMax int
-	Weak    map[string]bool
+	Subject    string
+	Modules    []moduleSpec
+	Sources    []paperSource
+	MainSource string
+	Count      int
+	DiffMin    int
+	DiffMax    int
+	Weak       map[string]bool
 }
 
 func (s *Server) buildPaperPicks(r *http.Request, opt paperBuildOptions) ([]paperPick, []string, error) {
@@ -25,6 +26,15 @@ func (s *Server) buildPaperPicks(r *http.Request, opt paperBuildOptions) ([]pape
 	seenG := map[string]bool{}
 	notices := make([]string, 0)
 	picks := make([]paperPick, 0, opt.Count)
+	activeSources := opt.Sources
+	if opt.MainSource != "" {
+		for _, src := range opt.Sources {
+			if src.ID == opt.MainSource {
+				activeSources = []paperSource{src}
+				break
+			}
+		}
+	}
 
 	for mi, m := range opt.Modules {
 		quota := moduleQuotas[mi]
@@ -69,12 +79,12 @@ func (s *Server) buildPaperPicks(r *http.Request, opt paperBuildOptions) ([]pape
 				}
 			}
 		} else {
-			weights := make([]float64, len(opt.Sources))
+			weights := make([]float64, len(activeSources))
 			for i := range weights {
 				weights[i] = 1
 			}
 			srcQuotas := allocateWeights(weights, quota)
-			for si, src := range opt.Sources {
+			for si, src := range activeSources {
 				srcQuota := srcQuotas[si]
 				if srcQuota <= 0 {
 					continue

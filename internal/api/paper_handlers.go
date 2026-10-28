@@ -81,34 +81,34 @@ type zhiCeTemplate struct {
 
 var zhiCeTemplates = map[string]zhiCeTemplate{
 	"联考A类": {Count: 100, Modules: []moduleSpec{
-		{"常识判断", 20, "tint-amber", nil},
-		{"言语理解与表达", 20, "tint-blue", nil},
-		{"数量关系", 10, "tint-orange", nil},
-		{"判断推理", 35, "tint-violet", nil},
-		{"资料分析", 15, "tint-green", nil},
+		{"常识判断", 20, "tint-amber", []subSpec{{"人文常识", 8}, {"科技常识", 4}, {"法律常识", 3}, {"地理国情", 3}, {"经济常识", 2}}},
+		{"言语理解与表达", 20, "tint-blue", []subSpec{{"逻辑填空", 8}, {"片段阅读", 8}, {"语句表达", 4}}},
+		{"数量关系", 10, "tint-orange", []subSpec{{"数学运算", 10}}},
+		{"判断推理", 35, "tint-violet", []subSpec{{"图形推理", 7}, {"定义判断", 9}, {"类比推理", 9}, {"逻辑判断", 10}}},
+		{"资料分析", 15, "tint-green", []subSpec{{"综合", 6}, {"增长", 4}, {"比重", 2}, {"平均数", 2}, {"倍数", 1}}},
 	}},
 	// B/C 类的官方模块包含“数量分析/综合分析”，题库分类目前没有这两个
 	// 独立分类，先按通用五模块抽取，避免生成空卷。
 	"联考B类": {Count: 100, Modules: []moduleSpec{
-		{"常识判断", 20, "tint-amber", nil},
-		{"言语理解与表达", 25, "tint-blue", nil},
-		{"数量关系", 15, "tint-orange", nil},
-		{"判断推理", 30, "tint-violet", nil},
-		{"资料分析", 10, "tint-green", nil},
+		{"常识判断", 20, "tint-amber", []subSpec{{"人文常识", 8}, {"科技常识", 4}, {"法律常识", 3}, {"地理国情", 3}, {"经济常识", 2}}},
+		{"言语理解与表达", 25, "tint-blue", []subSpec{{"逻辑填空", 10}, {"片段阅读", 10}, {"语句表达", 5}}},
+		{"数量关系", 15, "tint-orange", []subSpec{{"数学运算", 15}}},
+		{"判断推理", 30, "tint-violet", []subSpec{{"图形推理", 6}, {"定义判断", 8}, {"类比推理", 8}, {"逻辑判断", 8}}},
+		{"资料分析", 10, "tint-green", []subSpec{{"综合", 4}, {"增长", 3}, {"比重", 1}, {"平均数", 1}, {"倍数", 1}}},
 	}},
 	"联考C类": {Count: 100, Modules: []moduleSpec{
-		{"常识判断", 20, "tint-amber", nil},
-		{"言语理解与表达", 25, "tint-blue", nil},
-		{"数量关系", 10, "tint-orange", nil},
-		{"判断推理", 30, "tint-violet", nil},
-		{"资料分析", 15, "tint-green", nil},
+		{"常识判断", 20, "tint-amber", []subSpec{{"人文常识", 8}, {"科技常识", 4}, {"法律常识", 3}, {"地理国情", 3}, {"经济常识", 2}}},
+		{"言语理解与表达", 25, "tint-blue", []subSpec{{"逻辑填空", 10}, {"片段阅读", 10}, {"语句表达", 5}}},
+		{"数量关系", 10, "tint-orange", []subSpec{{"数学运算", 10}}},
+		{"判断推理", 30, "tint-violet", []subSpec{{"图形推理", 6}, {"定义判断", 8}, {"类比推理", 8}, {"逻辑判断", 8}}},
+		{"资料分析", 15, "tint-green", []subSpec{{"综合", 6}, {"增长", 4}, {"比重", 2}, {"平均数", 2}, {"倍数", 1}}},
 	}},
 	"山东": {Count: 90, Modules: []moduleSpec{
-		{"常识判断", 15, "tint-amber", nil},
-		{"言语理解与表达", 20, "tint-blue", nil},
-		{"数量关系", 5, "tint-orange", nil},
-		{"判断推理", 35, "tint-violet", nil},
-		{"资料分析", 15, "tint-green", nil},
+		{"常识判断", 15, "tint-amber", []subSpec{{"人文常识", 6}, {"科技常识", 3}, {"法律常识", 3}, {"地理国情", 2}, {"经济常识", 1}}},
+		{"言语理解与表达", 20, "tint-blue", []subSpec{{"逻辑填空", 8}, {"片段阅读", 8}, {"语句表达", 4}}},
+		{"数量关系", 5, "tint-orange", []subSpec{{"数学运算", 5}}},
+		{"判断推理", 35, "tint-violet", []subSpec{{"图形推理", 7}, {"定义判断", 9}, {"类比推理", 9}, {"逻辑判断", 10}}},
+		{"资料分析", 15, "tint-green", []subSpec{{"综合", 6}, {"增长", 4}, {"比重", 2}, {"平均数", 2}, {"倍数", 1}}},
 	}},
 }
 
@@ -160,16 +160,18 @@ func (s *Server) generatePaper(w http.ResponseWriter, r *http.Request) {
 	diffMin, diffMax := difficultyRange(req.Difficulty)
 
 	sources := xingcePaperSources
+	mainSource := ""
 	if req.Subject == "事业编·职测" {
 		sources = zhiCePaperSources
+		mainSource = sourceOfCategory(req.Category)
 	}
 	weak := map[string]bool{}
 	for _, name := range req.Weak {
 		weak[name] = true
 	}
 	picks, buildNotices, err := s.buildPaperPicks(r, paperBuildOptions{
-		Subject: req.Subject, Modules: modules, Sources: sources, Count: req.Count,
-		DiffMin: diffMin, DiffMax: diffMax, Weak: weak,
+		Subject: req.Subject, Modules: modules, Sources: sources, MainSource: mainSource,
+		Count: req.Count, DiffMin: diffMin, DiffMax: diffMax, Weak: weak,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "组卷抽题失败")
@@ -209,7 +211,16 @@ func (s *Server) generatePaper(w http.ResponseWriter, r *http.Request) {
 	questions = ordered
 	sourceCounts := s.sourceCounts(r, ids)
 	failedSources := make([]string, 0)
-	for _, src := range sources {
+	checkSources := sources
+	if mainSource != "" {
+		for _, src := range sources {
+			if src.ID == mainSource {
+				checkSources = []paperSource{src}
+				break
+			}
+		}
+	}
+	for _, src := range checkSources {
 		if sourceCounts[src.ID] == 0 {
 			failedSources = append(failedSources, src.ID)
 			buildNotices = append(buildNotices, "「"+src.Label+"」无可用题目")
