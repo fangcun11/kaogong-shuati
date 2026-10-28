@@ -106,7 +106,7 @@ web/src/
 - 刷题：`.q-card`、`.q-content`、`.option`、`.q-meta`、`.q-progress-bar`
 - 操作：`.btn`、`.action-row`、`.tag`、`.list-item`
 
-新增页面优先复用这些类，避免建立一套平行的设计系统。
+新增页面优先复用这些类，避免建立一套平行的设计系统。首页是例外：`HomeView.vue` 使用 scoped 变量重做了视觉，只通过 `body.home-surface` 影响壳层纸面底色和首页顶栏。
 
 ## 4. 路由与 API 映射
 
@@ -176,6 +176,17 @@ POST /api/records { questionId, subject, chapter, type, selected, correct, costM
 - 答题卡状态：`current` / `todo` / `correct` / `wrong` / `answered`
 - 背题模式不选答案、不提交、不写记录，直接高亮正确项并显示解析
 - 结果页统计由 `answers` 派生，不依赖后端汇总
+
+### 首页
+
+`HomeView.vue` 采用独立的 scoped 设计变量（纸面底色、墨色、一个墨绿主色 + 待订正红）：
+
+- 视觉：去掉大色块 Hero 与彩色图标块；顶部是日期 + 继续科目 + 单色主按钮，统计用细线分隔，题库用列表行 + 2px 进度线，工具区收成单色文字入口
+- 数据：`GET /api/subjects`、`GET /api/records/stats`、`GET /api/custom/batches`；科目按 行测 → 申论 → 职测 → 综应 排序，「继续」取已做题数最多的科目
+- 空档案：没有科目时 CTA 变成「导入题库」，跳 `#/custom`；没有批次时自定义行显示「点击导入」
+- 壳层：`onMounted` 给 `body` 加 `home-surface`，卸载时移除；该 class 只改纸面底色、顶栏/底栏底色和首页顶栏标题排版，离开首页即恢复
+- 宽屏：≥900px 首页容器放宽到 1040px，内容分左右两栏（题库 / 概览 + 工具）；同时 `App.vue` 在 ≥900px 隐藏底部导航，改在顶栏显示主导航
+- 深色：首页变量在 `html[data-theme='dark']` 与系统深色下都有覆盖，注意 scoped 选择器不要写成 `:global(html...) .home`（会整段变成全局 html 变量，被 `.home` 覆盖）
 
 ### 自定义题详情
 
@@ -276,7 +287,7 @@ PDF 文本层可用题数少于 5 时也会转去结构化，避免 PDF 断行�
 
 ```text
 1. 登录
-2. 首页 5 张科目/自定义卡
+2. 首页：继续入口、概览、题库列表、工具区；375 与 1280 宽度都检查
 3. 行测 → 来源分类 → 试卷列表 → 打开试卷
 4. 选答案 → 提交 → 正确/错误高亮 → 下一题
 5. 答题卡打开、跳题、关闭

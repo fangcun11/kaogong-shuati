@@ -79,7 +79,7 @@ ref-skills/                  开源技能参考副本（运行时技能库在 DB
 
 | Route | 页面 | 状态 |
 |---|---|---|
-| `/vue/#/` | 登录后的首页、Hero、科目卡、快捷入口 | 可用 |
+| `/vue/#/` | 首页：继续入口、概览、题库列表、工具区（宽屏两栏） | 可用 |
 | `/vue/#/login` | 登录 | 可用 |
 | `/vue/#/subject/:name` | 科目/来源分类 | 可用 |
 | `/vue/#/source/:subject/:category` | 试卷列表 | 可用 |
@@ -108,7 +108,7 @@ ref-skills/                  开源技能参考副本（运行时技能库在 DB
 - 路由：`createWebHashHistory()`，所以刷新不需要 Go SPA fallback；`public/vue/index.html` 由 `internal/api/static.go` 的目录 index 逻辑提供
 - API：`web/src/api/client.ts`，同源 `/api`、`credentials: include`、401 派发 `kg:unauthorized`
 - Session：`web/src/stores/session.ts`，路由守卫首次加载 `/api/auth/me`
-- 布局：`web/src/App.vue`，包含顶部栏、底部导航、主题切换、退出
+- 布局：`web/src/App.vue`，包含顶部栏、底部导航、主题切换、退出；≥900px 隐藏底部导航并显示顶部导航
 - 样式：`web/src/main.ts` 引入旧版 `public/style.css`，再引入 `web/src/style.css`
 - 组件/页面：`web/src/views/*.vue`、`web/src/components/Icon.vue`
 
