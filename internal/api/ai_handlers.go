@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -299,12 +300,25 @@ func (s *Server) aiGrade(w http.ResponseWriter, r *http.Request) {
 	if req.QuestionID > 0 {
 		q, _ = s.findQuestion(r, strconv.FormatInt(req.QuestionID, 10))
 	}
+	fullScore := ""
+	if q != nil {
+		fullScore = extractFullScore(q.Content)
+	}
+	material := req.Material
+	if material == "" && q != nil {
+		material = s.materialTextForQuestion(r, q)
+	}
 	prompt := "请按系统提示中的申论/综应评分规则批改下面的作答。\n"
 	if q != nil {
 		prompt += "\n【题目】\n" + q.Content
 	}
-	if req.Material != "" {
-		prompt += "\n\n【给定材料】\n" + trimRunes(req.Material, 8000)
+	if fullScore != "" {
+		prompt += "\n\n【满分】" + fullScore + " 分"
+	}
+	if material != "" {
+		prompt += "\n\n【给定材料】\n" + trimRunes(material, 8000)
+	} else {
+		prompt += "\n\n【注意】本题给定材料暂未关联，请基于题目要求评卷，并在结论中说明。"
 	}
 	prompt += "\n\n【用户作答】\n" + req.Content
 	result, err := s.ai.Call(s.agentForUser(r, agent), prompt)
@@ -312,7 +326,52 @@ func (s *Server) aiGrade(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"notice": "批改失败：" + err.Error(), "score": nil})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"notice": "批改完成", "score": nil, "result": result})
+	if q != nil {
+		u, _ := userFromContext(r.Context())
+		subject := subjectOfPaper(r, s, q.PaperID)
+		_, _ = s.db.ExecContext(r.Context(), `
+			INSERT INTO practice_records
+			(user_id, question_id, paper_id, subject, chapter, question_type, selected, is_correct, cost_ms, group_key, sub_key)
+			VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 0, ?, '')`,
+			u.ID, strconv.FormatInt(q.QuestionID, 10), q.PaperID, subject, q.Chapter, q.Type,
+			mustJSON(map[string]string{"answer": req.Content}), groupForSubject(subject))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"notice": "批改完成", "score": nil, "result": result, "fullScore": fullScore})
+}
+
+var fullScoreRE = regexp.MustCompile(`[（(]\s*(\d{1,2})\s*分\s*[）)]`)
+
+func extractFullScore(content string) string {
+	m := fullScoreRE.FindStringSubmatch(content)
+	if len(m) == 2 {
+		return m[1]
+	}
+	return ""
+}
+
+func (s *Server) materialTextForQuestion(r *http.Request, q *questionJSON) string {
+	if q.PaperID > 0 {
+		rows, err := s.db.QueryContext(r.Context(), `SELECT title, text FROM materials WHERE paperId = ? ORDER BY idx`, q.PaperID)
+		if err == nil {
+			var parts []string
+			for rows.Next() {
+				var title, text string
+				if rows.Scan(&title, &text) == nil {
+					parts = append(parts, title+"\n"+text)
+				}
+			}
+			rows.Close()
+			if len(parts) > 0 {
+				return strings.Join(parts, "\n\n")
+			}
+		}
+	}
+	var content string
+	_ = s.db.QueryRowContext(r.Context(), `
+		SELECT m.content FROM q_materials m
+		JOIN q_material_map qm ON qm.material_id = m.material_id
+		WHERE qm.question_id = ? LIMIT 1`, q.QuestionID).Scan(&content)
+	return htmlTagRE.ReplaceAllString(content, " ")
 }
 
 func (s *Server) aiMaterial(w http.ResponseWriter, r *http.Request) {
