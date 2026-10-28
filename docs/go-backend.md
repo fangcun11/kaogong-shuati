@@ -23,7 +23,7 @@ go run ./cmd/kaogong
 2. 必要时从 `tiku.db.part-*` 重组 `tiku.db`，再从 `tiku.db`、`materials.db`、`tiku-index.db` 导入题库内容
 3. 创建第一个管理员账号
 
-本机开发环境的初始管理员凭据写在 `data/initial-admin.txt`（gitignore，不进入仓库）。首次登录后请立即修改密码，或在正式部署时删除该文件。
+本工作区当前的初始管理员凭据写在 `data/initial-admin.txt`（gitignore，不进入仓库）。首次登录后请立即修改密码，或在正式部署时删除该文件；全新部署则通过 `KAOGONG_ADMIN_PASSWORD` 创建管理员，不会自动生成该文件。
 
 也可以用 `-import` 强制重新导入内容。
 
