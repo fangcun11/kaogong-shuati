@@ -3,6 +3,8 @@ import { loadSession, session } from '../stores/session'
 import HomeView from '../views/HomeView.vue'
 import LoginView from '../views/LoginView.vue'
 import SubjectView from '../views/SubjectView.vue'
+import PaperListView from '../views/PaperListView.vue'
+import PracticeView from '../views/PracticeView.vue'
 import PlaceholderView from '../views/PlaceholderView.vue'
 
 const router = createRouter({
@@ -11,6 +13,8 @@ const router = createRouter({
     { path: '/', name: 'home', component: HomeView, meta: { title: '没钱考什么公' } },
     { path: '/login', name: 'login', component: LoginView, meta: { title: '登录 · 没钱考什么公', public: true } },
     { path: '/subject/:name', name: 'subject', component: SubjectView, meta: { title: '题库' } },
+    { path: '/source/:subject/:category', name: 'source', component: PaperListView, meta: { title: '试卷列表' } },
+    { path: '/practice/:subject/:category?', name: 'practice', component: PracticeView, meta: { title: '刷题' } },
     { path: '/papers', name: 'papers', component: PlaceholderView, meta: { title: '智能组卷' } },
     { path: '/wrong', name: 'wrong', component: PlaceholderView, meta: { title: '错题本' } },
     { path: '/favorites', name: 'favorites', component: PlaceholderView, meta: { title: '收藏' } },

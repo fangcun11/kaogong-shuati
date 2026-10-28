@@ -15,6 +15,10 @@ const categories = ref<Category[]>([])
 const loading = ref(true)
 const error = ref('')
 
+function start(category: string) {
+  router.push({ name: 'source', params: { subject: String(route.params.name), category } })
+}
+
 onMounted(async () => {
   try {
     const name = String(route.params.name || '')
@@ -37,7 +41,7 @@ onMounted(async () => {
       <p class="muted" style="margin: 4px 0 0">按来源分类查看题库</p>
     </div>
     <div class="vue-category-list">
-      <button v-for="c in categories" :key="c.category" class="list-item vue-category-item">
+      <button v-for="c in categories" :key="c.category" class="list-item vue-category-item" @click="start(c.category)">
         <span class="li-icon tint-blue">◫</span>
         <span class="li-main">
           <span class="li-title">{{ c.category }}</span>
