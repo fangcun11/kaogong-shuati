@@ -17,19 +17,61 @@ type paperGenerateRequest struct {
 	Weak       []string `json:"weak"`
 }
 
+type subSpec struct {
+	Name   string
+	Weight int
+}
+
 type moduleSpec struct {
 	Name  string
 	Count int
 	Tint  string
+	Subs  []subSpec
+}
+
+type paperSource struct {
+	ID         string
+	Label      string
+	Categories []string
+	Like       string
+}
+
+type paperPick struct {
+	QuestionID int64
+	GroupID    string
+	GroupIndex int
+	GroupTotal int
+	Module     string
+	SubIdx     int
 }
 
 var xingceModules = []moduleSpec{
-	{"政治理论", 20, "tint-red"},
-	{"常识判断", 15, "tint-amber"},
-	{"言语理解与表达", 30, "tint-blue"},
-	{"数量关系", 10, "tint-orange"},
-	{"判断推理", 35, "tint-violet"},
-	{"资料分析", 20, "tint-green"},
+	{"政治理论", 20, "tint-red", []subSpec{{"新思想", 10}, {"时事政治", 6}, {"马克思主义", 2}, {"毛中特", 2}}},
+	{"常识判断", 15, "tint-amber", []subSpec{{"人文常识", 6}, {"法律常识", 3}, {"科技常识", 3}, {"地理国情", 2}, {"经济常识", 1}}},
+	{"言语理解与表达", 30, "tint-blue", []subSpec{{"片段阅读", 12}, {"逻辑填空", 10}, {"语句表达", 8}}},
+	{"数量关系", 10, "tint-orange", []subSpec{{"数学运算", 10}}},
+	{"判断推理", 35, "tint-violet", []subSpec{{"图形推理", 9}, {"定义判断", 9}, {"类比推理", 9}, {"逻辑判断", 8}}},
+	{"资料分析", 20, "tint-green", []subSpec{{"综合", 7}, {"增长", 6}, {"比重", 3}, {"平均数", 3}, {"倍数", 1}}},
+}
+
+var xingcePaperSources = []paperSource{
+	{ID: "tikuA", Label: "国考", Like: "国考"},
+	{ID: "tikuB", Label: "联考省考", Categories: []string{
+		"黑龙江", "吉林", "湖北", "新疆", "江西", "河南", "天津", "重庆", "福建", "安徽",
+		"云南", "河北", "山西", "广西", "青海", "陕西", "贵州", "湖南", "辽宁", "甘肃",
+		"海南", "内蒙古", "宁夏", "西藏", "四川",
+	}},
+	{ID: "tikuC", Label: "独立命题", Categories: []string{
+		"江苏", "浙江", "广东", "山东", "北京", "上海", "深圳市考", "广州市考",
+	}},
+	{ID: "tikuD", Label: "选调/其他", Categories: []string{"选调", "政法干警"}},
+}
+
+var zhiCePaperSources = []paperSource{
+	{ID: "zcA", Label: "联考A类", Categories: []string{"联考A类"}},
+	{ID: "zcB", Label: "联考B类", Categories: []string{"联考B类"}},
+	{ID: "zcC", Label: "联考C类", Categories: []string{"联考C类"}},
+	{ID: "sd", Label: "山东", Categories: []string{"山东"}},
 }
 
 type zhiCeTemplate struct {
@@ -39,34 +81,34 @@ type zhiCeTemplate struct {
 
 var zhiCeTemplates = map[string]zhiCeTemplate{
 	"联考A类": {Count: 100, Modules: []moduleSpec{
-		{"常识判断", 20, "tint-amber"},
-		{"言语理解与表达", 20, "tint-blue"},
-		{"数量关系", 10, "tint-orange"},
-		{"判断推理", 35, "tint-violet"},
-		{"资料分析", 15, "tint-green"},
+		{"常识判断", 20, "tint-amber", nil},
+		{"言语理解与表达", 20, "tint-blue", nil},
+		{"数量关系", 10, "tint-orange", nil},
+		{"判断推理", 35, "tint-violet", nil},
+		{"资料分析", 15, "tint-green", nil},
 	}},
 	// B/C 类的官方模块包含“数量分析/综合分析”，题库分类目前没有这两个
 	// 独立分类，先按通用五模块抽取，避免生成空卷。
 	"联考B类": {Count: 100, Modules: []moduleSpec{
-		{"常识判断", 20, "tint-amber"},
-		{"言语理解与表达", 25, "tint-blue"},
-		{"数量关系", 15, "tint-orange"},
-		{"判断推理", 30, "tint-violet"},
-		{"资料分析", 10, "tint-green"},
+		{"常识判断", 20, "tint-amber", nil},
+		{"言语理解与表达", 25, "tint-blue", nil},
+		{"数量关系", 15, "tint-orange", nil},
+		{"判断推理", 30, "tint-violet", nil},
+		{"资料分析", 10, "tint-green", nil},
 	}},
 	"联考C类": {Count: 100, Modules: []moduleSpec{
-		{"常识判断", 20, "tint-amber"},
-		{"言语理解与表达", 25, "tint-blue"},
-		{"数量关系", 10, "tint-orange"},
-		{"判断推理", 30, "tint-violet"},
-		{"资料分析", 15, "tint-green"},
+		{"常识判断", 20, "tint-amber", nil},
+		{"言语理解与表达", 25, "tint-blue", nil},
+		{"数量关系", 10, "tint-orange", nil},
+		{"判断推理", 30, "tint-violet", nil},
+		{"资料分析", 15, "tint-green", nil},
 	}},
 	"山东": {Count: 90, Modules: []moduleSpec{
-		{"常识判断", 15, "tint-amber"},
-		{"言语理解与表达", 20, "tint-blue"},
-		{"数量关系", 5, "tint-orange"},
-		{"判断推理", 35, "tint-violet"},
-		{"资料分析", 15, "tint-green"},
+		{"常识判断", 15, "tint-amber", nil},
+		{"言语理解与表达", 20, "tint-blue", nil},
+		{"数量关系", 5, "tint-orange", nil},
+		{"判断推理", 35, "tint-violet", nil},
+		{"资料分析", 15, "tint-green", nil},
 	}},
 }
 
@@ -116,103 +158,84 @@ func (s *Server) generatePaper(w http.ResponseWriter, r *http.Request) {
 		req.Category = "联考A类"
 	}
 	diffMin, diffMax := difficultyRange(req.Difficulty)
-	from, to := yearRange()
 
-	quotas := moduleQuotas(modules, req.Count)
+	sources := xingcePaperSources
+	if req.Subject == "事业编·职测" {
+		sources = zhiCePaperSources
+	}
 	weak := map[string]bool{}
-	for _, m := range req.Weak {
-		weak[m] = true
+	for _, name := range req.Weak {
+		weak[name] = true
 	}
-	// Weak modules get a modest boost; the remaining quota is reduced from
-	// the largest other modules so the total remains stable.
-	if len(weak) > 0 {
-		for i := range quotas {
-			if weak[modules[i].Name] {
-				quotas[i] = quotas[i] * 130 / 100
-			}
-		}
-		normalizeQuotas(quotas, req.Count, modules, weak)
+	picks, buildNotices, err := s.buildPaperPicks(r, paperBuildOptions{
+		Subject: req.Subject, Modules: modules, Sources: sources, Count: req.Count,
+		DiffMin: diffMin, DiffMax: diffMax, Weak: weak,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL", "组卷抽题失败")
+		return
 	}
-
-	picked := make([]int64, 0, req.Count)
-	seen := map[int64]bool{}
-	moduleOf := map[int64]string{}
-	for i, m := range modules {
-		n := quotas[i]
-		if n <= 0 {
-			continue
-		}
-		rows, err := s.db.QueryContext(r.Context(), `
-			SELECT qc.question_id
-			FROM question_categories qc
-			JOIN questions q ON q.questionId = qc.question_id
-			JOIN papers p ON p.id = q.paperId
-			WHERE qc.subject = ? AND qc.category = ?
-			  AND substr(p.name,1,4) BETWEEN ? AND ?
-			  AND COALESCE(q.difficulty, 5) BETWEEN ? AND ?
-			GROUP BY qc.question_id ORDER BY RANDOM() LIMIT ?`,
-			req.Subject, m.Name, from, to, diffMin, diffMax, n)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "INTERNAL", "组卷抽题失败")
-			return
-		}
-		for rows.Next() {
-			var id int64
-			if rows.Scan(&id) == nil && !seen[id] {
-				seen[id] = true
-				picked = append(picked, id)
-				moduleOf[id] = m.Name
-			}
-		}
-		rows.Close()
-	}
-	// Fill any shortfall from the whole subject.
-	if len(picked) < req.Count {
-		rows, err := s.db.QueryContext(r.Context(), `
-			SELECT qc.question_id FROM question_categories qc
-			JOIN questions q ON q.questionId = qc.question_id
-			JOIN papers p ON p.id = q.paperId
-			WHERE qc.subject = ? AND substr(p.name,1,4) BETWEEN ? AND ?
-			  AND COALESCE(q.difficulty, 5) BETWEEN ? AND ?
-			GROUP BY qc.question_id ORDER BY RANDOM() LIMIT ?`,
-			req.Subject, from, to, diffMin, diffMax, req.Count-len(picked))
-		if err == nil {
-			for rows.Next() {
-				var id int64
-				if rows.Scan(&id) == nil && !seen[id] {
-					seen[id] = true
-					picked = append(picked, id)
-					moduleOf[id] = "综合"
-				}
-			}
-			rows.Close()
-		}
-	}
-	if len(picked) == 0 {
+	picks = trimPaperPicks(picks, req.Count)
+	if len(picks) == 0 {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "题库中没有符合条件的题目"})
 		return
 	}
-	questions, err := s.fetchQuestionsByIDs(r, picked)
+	ids := make([]int64, 0, len(picks))
+	for _, p := range picks {
+		ids = append(ids, p.QuestionID)
+	}
+	questions, err := s.fetchQuestionsByIDs(r, ids)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "读取组卷题目失败")
 		return
 	}
 	questions = s.enrichMaterials(r, req.Subject, questions)
-	for i := range questions {
-		questions[i].Module = moduleOf[questions[i].QuestionID]
+	byID := make(map[int64]questionJSON, len(questions))
+	for _, q := range questions {
+		byID[q.QuestionID] = q
+	}
+	ordered := make([]questionJSON, 0, len(picks))
+	for _, p := range picks {
+		q, ok := byID[p.QuestionID]
+		if !ok {
+			continue
+		}
+		q.Module = p.Module
+		q.GroupID = p.GroupID
+		q.GroupIndex = p.GroupIndex
+		q.GroupTotal = p.GroupTotal
+		ordered = append(ordered, q)
+	}
+	questions = ordered
+	sourceCounts := s.sourceCounts(r, ids)
+	failedSources := make([]string, 0)
+	for _, src := range sources {
+		if sourceCounts[src.ID] == 0 {
+			failedSources = append(failedSources, src.ID)
+			buildNotices = append(buildNotices, "「"+src.Label+"」无可用题目")
+		}
 	}
 	title := fmt.Sprintf("智能组卷 · %s %d题", req.Subject, len(questions))
-	if len(questions) < req.Count {
-		if notice != "" {
-			notice += "；"
+	if req.Subject == "事业编·职测" {
+		title = fmt.Sprintf("智能组卷 · %s·%s %d题", req.Subject, req.Category, len(questions))
+		duration = 90
+	} else {
+		duration = (len(questions)*120 + 65) / 130
+		if duration < 5 {
+			duration = 5
 		}
-		notice += fmt.Sprintf("题库资源有限，实际组卷 %d 题", len(questions))
+	}
+	if len(questions) < req.Count {
+		buildNotices = append(buildNotices, fmt.Sprintf("题库资源有限，实际组卷 %d 题", len(questions)))
+	}
+	if len(buildNotices) > 0 {
+		notice = strings.Join(buildNotices, "；")
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok": true, "paperId": newPaperID(), "title": title, "subject": req.Subject,
 		"category": req.Category, "total": len(questions), "durationMinutes": duration,
 		"difficulty":   map[string]int{"min": diffMin, "max": diffMax},
-		"sourceCounts": s.sourceCounts(r, picked), "failedSources": []string{},
+		"sourceCounts": sourceCounts, "failedSources": failedSources,
 		"questions": questions, "notice": notice,
 	})
 }
@@ -343,44 +366,6 @@ func moduleQuotas(modules []moduleSpec, total int) []int {
 		remain--
 	}
 	return out
-}
-
-func normalizeQuotas(quotas []int, total int, modules []moduleSpec, weak map[string]bool) {
-	for {
-		sum := 0
-		for _, n := range quotas {
-			sum += n
-		}
-		if sum == total {
-			return
-		}
-		if sum > total {
-			best := -1
-			for i := range quotas {
-				if !weak[modules[i].Name] && (best < 0 || quotas[i] > quotas[best]) {
-					best = i
-				}
-			}
-			if best < 0 || quotas[best] == 0 {
-				for i := range quotas {
-					if quotas[i] > 0 {
-						quotas[i]--
-						break
-					}
-				}
-			} else {
-				quotas[best]--
-			}
-		} else {
-			best := 0
-			for i := range quotas {
-				if quotas[i] > quotas[best] {
-					best = i
-				}
-			}
-			quotas[best]++
-		}
-	}
 }
 
 func difficultyRange(d string) (int, int) {

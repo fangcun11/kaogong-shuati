@@ -414,6 +414,9 @@ type questionJSON struct {
 	Material     string   `json:"material,omitempty"`
 	MaterialHTML string   `json:"materialHtml,omitempty"`
 	Module       string   `json:"module,omitempty"`
+	GroupID      string   `json:"groupId,omitempty"`
+	GroupIndex   int      `json:"groupIndex,omitempty"`
+	GroupTotal   int      `json:"groupTotal,omitempty"`
 }
 
 type rowScanner interface {
