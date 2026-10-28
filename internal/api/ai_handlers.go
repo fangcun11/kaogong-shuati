@@ -164,6 +164,10 @@ func (s *Server) aiExplain(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"notice": "行测解析 AI 未配置"})
 		return
 	}
+	if agent.Enabled == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"notice": "行测解析 AI 未启用，请到「AI 设置」页面启用。"})
+		return
+	}
 	if agent.APIKey == "" {
 		writeJSON(w, http.StatusOK, map[string]any{"notice": "行测解析 AI 尚未配置 api_key，请到「AI 设置」页面填写后重试。"})
 		return
@@ -233,8 +237,8 @@ func (s *Server) aiOCR(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	agent, err := s.ai.GetByRole("image-reader")
-	if err != nil || agent == nil || agent.APIKey == "" {
-		writeJSON(w, http.StatusOK, map[string]any{"notice": "识图转写员尚未配置 api_key"})
+	if err != nil || agent == nil || agent.APIKey == "" || agent.Enabled == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"notice": "识图转写员未启用或尚未配置 api_key"})
 		return
 	}
 	if len(req.Image) > 25<<20 {
@@ -259,8 +263,8 @@ func (s *Server) aiStructure(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	agent, err := s.ai.GetByRole("custom-question-parser")
-	if err != nil || agent == nil || agent.APIKey == "" {
-		writeJSON(w, http.StatusOK, map[string]any{"notice": "题目解析员尚未配置 api_key"})
+	if err != nil || agent == nil || agent.APIKey == "" || agent.Enabled == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"notice": "题目解析员未启用或尚未配置 api_key"})
 		return
 	}
 	var text string
@@ -287,8 +291,8 @@ func (s *Server) aiGrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	agent, err := s.ai.GetByRole("shenlun-grader")
-	if err != nil || agent == nil || agent.APIKey == "" {
-		writeJSON(w, http.StatusOK, map[string]any{"notice": "申论/综应批改 AI 尚未配置 api_key", "score": nil})
+	if err != nil || agent == nil || agent.APIKey == "" || agent.Enabled == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"notice": "申论/综应批改 AI 未启用或尚未配置 api_key", "score": nil})
 		return
 	}
 	var q *questionJSON

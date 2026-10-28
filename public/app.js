@@ -148,6 +148,7 @@ const ICO = {
   trendingUp: '<path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/>',
   save: '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/>',
   sliders: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/>',
+  key: '<circle cx="7.5" cy="15.5" r="4.5"/><path d="m11 12 8-8"/><path d="m16 7 2 2"/><path d="m19 4 2 2"/>',
   flask: '<path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/>',
   history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
   clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
@@ -5518,6 +5519,53 @@ if (logoutBtn) {
   logoutBtn.onclick = async () => {
     try { await api('/api/auth/logout', { method: 'POST' }); } catch {}
     location.replace('/login.html');
+  };
+}
+
+const passwordBtn = $('#btn-password');
+if (passwordBtn) {
+  passwordBtn.onclick = () => {
+    const overlay = customSheet(`
+      <div class="sheet-head"><b>${ico('key', 16)} 修改密码</b><button class="sheet-close">✕</button></div>
+      <p class="muted" style="margin:0 0 12px">修改成功后，所有设备都需要重新登录。</p>
+      <label class="field-label">当前密码</label>
+      <input type="password" class="field-input" id="pw-old" autocomplete="current-password">
+      <label class="field-label">新密码（至少 8 位）</label>
+      <input type="password" class="field-input" id="pw-new" autocomplete="new-password">
+      <label class="field-label">确认新密码</label>
+      <input type="password" class="field-input" id="pw-confirm" autocomplete="new-password">
+      <div class="action-row" style="margin-top:14px">
+        <button class="btn btn-ghost" id="pw-cancel">取消</button>
+        <button class="btn btn-primary" id="pw-save">保存</button>
+      </div>`);
+    overlay.querySelector('.sheet-close').onclick = () => overlay.remove();
+    overlay.querySelector('#pw-cancel').onclick = () => overlay.remove();
+    overlay.querySelector('#pw-save').onclick = async () => {
+      const oldPassword = overlay.querySelector('#pw-old').value;
+      const newPassword = overlay.querySelector('#pw-new').value;
+      const confirm = overlay.querySelector('#pw-confirm').value;
+      if (!oldPassword) { toast('请输入当前密码'); return; }
+      if (newPassword.length < 8) { toast('新密码至少 8 位'); return; }
+      if (newPassword !== confirm) { toast('两次输入的新密码不一致'); return; }
+      const btn = overlay.querySelector('#pw-save');
+      btn.disabled = true;
+      btn.textContent = '保存中…';
+      try {
+        const r = await api('/api/auth/password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ oldPassword, newPassword }),
+        });
+        if (r.ok) {
+          toast('密码已修改，请重新登录');
+          setTimeout(() => location.replace('/login.html'), 700);
+        }
+      } catch (e) {
+        toast(e.message || '修改失败');
+        btn.disabled = false;
+        btn.textContent = '保存';
+      }
+    };
   };
 }
 
