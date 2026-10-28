@@ -177,7 +177,9 @@ npm --prefix web run dev
 
 ## 7. Git 与发布
 
-- 当前分支 `main`；远程 `origin https://github.com/ERRRC/kaogong-shuati.git`
+- 当前分支 `main`
+- 当前上传目标：`origin https://github.com/fangcun11/kaogong-shuati.git`
+- 原仓库保留为只读上游：`upstream https://github.com/ERRRC/kaogong-shuati.git`（当前 `fangcun11` 账号没有其写权限）
 - `public/vue/` 的构建产物已纳入 Git；每次构建会生成新的 hash 文件名，提交时同时 stage 删除旧文件和新增文件：
 
 ```powershell
