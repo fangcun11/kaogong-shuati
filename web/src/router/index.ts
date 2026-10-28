@@ -6,6 +6,9 @@ import SubjectView from '../views/SubjectView.vue'
 import PaperListView from '../views/PaperListView.vue'
 import PracticeView from '../views/PracticeView.vue'
 import WrongView from '../views/WrongView.vue'
+import StatsView from '../views/StatsView.vue'
+import SmartPaperView from '../views/SmartPaperView.vue'
+import AiSettingsView from '../views/AiSettingsView.vue'
 import FavoritesView from '../views/FavoritesView.vue'
 import NotesView from '../views/NotesView.vue'
 import QuestionDetailView from '../views/QuestionDetailView.vue'
@@ -19,13 +22,14 @@ const router = createRouter({
     { path: '/subject/:name', name: 'subject', component: SubjectView, meta: { title: '题库' } },
     { path: '/source/:subject/:category', name: 'source', component: PaperListView, meta: { title: '试卷列表' } },
     { path: '/practice/:subject/:category?', name: 'practice', component: PracticeView, meta: { title: '刷题' } },
-    { path: '/papers', name: 'papers', component: PlaceholderView, meta: { title: '智能组卷' } },
+    { path: '/papers', name: 'papers', component: SmartPaperView, meta: { title: '智能组卷' } },
+    { path: '/stats', name: 'stats', component: StatsView, meta: { title: '学习统计' } },
     { path: '/wrong', name: 'wrong', component: WrongView, meta: { title: '错题本' } },
     { path: '/favorites', name: 'favorites', component: FavoritesView, meta: { title: '收藏' } },
     { path: '/notes', name: 'notes', component: NotesView, meta: { title: '笔记' } },
     { path: '/question/:id', name: 'question', component: QuestionDetailView, meta: { title: '题目详情' } },
     { path: '/custom', name: 'custom', component: PlaceholderView, meta: { title: '自定义题库' } },
-    { path: '/ai', name: 'ai', component: PlaceholderView, meta: { title: 'AI 设置' } },
+    { path: '/ai', name: 'ai', component: AiSettingsView, meta: { title: 'AI 设置' } },
   ],
 })
 

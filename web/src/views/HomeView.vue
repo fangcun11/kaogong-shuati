@@ -35,6 +35,7 @@ const quickItems = [
   { label: '收藏', icon: 'star', cls: 'qg-amber', to: 'favorites' },
   { label: '笔记', icon: 'book', cls: 'qg-green', to: 'notes' },
   { label: 'AI 设置', icon: 'sparkles', cls: 'qg-blue', to: 'ai' },
+  { label: '学习统计', icon: 'chart', cls: 'qg-green', to: 'stats' },
   { label: '智能组卷', icon: 'target', cls: 'qg-orange', to: 'papers' },
 ]
 const hasData = computed(() => !!stats.value && stats.value.total > 0)
@@ -55,6 +56,7 @@ function openQuick(to: string) {
   if (to === 'ai') return router.push({ name: 'ai' })
   if (to === 'notes') return router.push({ name: 'notes' })
   if (to === 'custom') return router.push({ name: 'custom' })
+  if (to === 'stats') return router.push({ name: 'stats' })
 }
 
 onMounted(async () => {

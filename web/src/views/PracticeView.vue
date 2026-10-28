@@ -40,6 +40,7 @@ const router = useRouter()
 const subject = computed(() => String(route.params.subject || ''))
 const category = computed(() => (route.params.category ? String(route.params.category) : ''))
 const paperId = computed(() => (typeof route.query.paperId === 'string' ? route.query.paperId : ''))
+const generatedMode = computed(() => route.query.generated === '1')
 const questions = ref<Question[]>([])
 const loading = ref(true)
 const error = ref('')
@@ -80,7 +81,13 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    if (paperId.value) {
+    if (generatedMode.value) {
+      const raw = sessionStorage.getItem('kg_generated_paper')
+      if (!raw) throw new Error('组卷结果已失效，请重新生成')
+      const paper = JSON.parse(raw) as { title: string; questions: Question[] }
+      questions.value = paper.questions || []
+      document.title = `${paper.title} · 刷题`
+    } else if (paperId.value) {
       const paper = await api<{ name: string; questions: Question[] }>(`/api/papers/${encodeURIComponent(paperId.value)}`)
       questions.value = paper.questions || []
       document.title = `${paper.name} · 刷题`
