@@ -10,6 +10,7 @@ import StatsView from '../views/StatsView.vue'
 import SmartPaperView from '../views/SmartPaperView.vue'
 import AiSettingsView from '../views/AiSettingsView.vue'
 import CustomBankView from '../views/CustomBankView.vue'
+import CustomImportView from '../views/CustomImportView.vue'
 import FavoritesView from '../views/FavoritesView.vue'
 import NotesView from '../views/NotesView.vue'
 import QuestionDetailView from '../views/QuestionDetailView.vue'
@@ -30,6 +31,7 @@ const router = createRouter({
     { path: '/notes', name: 'notes', component: NotesView, meta: { title: '笔记' } },
     { path: '/question/:id', name: 'question', component: QuestionDetailView, meta: { title: '题目详情' } },
     { path: '/custom', name: 'custom', component: CustomBankView, meta: { title: '自定义题库' } },
+    { path: '/custom/import', name: 'custom-import', component: CustomImportView, meta: { title: '导入自定义题库' } },
     { path: '/ai', name: 'ai', component: AiSettingsView, meta: { title: 'AI 设置' } },
   ],
 })

@@ -62,7 +62,7 @@ async function remove(batch: Batch) {
 }
 
 function importLegacy() {
-  window.location.href = '/?view=custom'
+  router.push({ name: 'custom-import' })
 }
 
 onMounted(load)
@@ -78,6 +78,7 @@ onMounted(load)
         <p class="muted">导入自己的题目，按批次刷题</p>
       </div>
       <button class="btn btn-ghost" @click="importLegacy">导入题目</button>
+
     </div>
     <div class="vue-custom-list">
       <div v-for="b in batches" :key="b.id" class="card vue-custom-item">
