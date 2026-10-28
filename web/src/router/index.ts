@@ -5,6 +5,10 @@ import LoginView from '../views/LoginView.vue'
 import SubjectView from '../views/SubjectView.vue'
 import PaperListView from '../views/PaperListView.vue'
 import PracticeView from '../views/PracticeView.vue'
+import WrongView from '../views/WrongView.vue'
+import FavoritesView from '../views/FavoritesView.vue'
+import NotesView from '../views/NotesView.vue'
+import QuestionDetailView from '../views/QuestionDetailView.vue'
 import PlaceholderView from '../views/PlaceholderView.vue'
 
 const router = createRouter({
@@ -16,10 +20,11 @@ const router = createRouter({
     { path: '/source/:subject/:category', name: 'source', component: PaperListView, meta: { title: '试卷列表' } },
     { path: '/practice/:subject/:category?', name: 'practice', component: PracticeView, meta: { title: '刷题' } },
     { path: '/papers', name: 'papers', component: PlaceholderView, meta: { title: '智能组卷' } },
-    { path: '/wrong', name: 'wrong', component: PlaceholderView, meta: { title: '错题本' } },
-    { path: '/favorites', name: 'favorites', component: PlaceholderView, meta: { title: '收藏' } },
+    { path: '/wrong', name: 'wrong', component: WrongView, meta: { title: '错题本' } },
+    { path: '/favorites', name: 'favorites', component: FavoritesView, meta: { title: '收藏' } },
+    { path: '/notes', name: 'notes', component: NotesView, meta: { title: '笔记' } },
+    { path: '/question/:id', name: 'question', component: QuestionDetailView, meta: { title: '题目详情' } },
     { path: '/custom', name: 'custom', component: PlaceholderView, meta: { title: '自定义题库' } },
-    { path: '/notes', name: 'notes', component: PlaceholderView, meta: { title: '笔记' } },
     { path: '/ai', name: 'ai', component: PlaceholderView, meta: { title: 'AI 设置' } },
   ],
 })
