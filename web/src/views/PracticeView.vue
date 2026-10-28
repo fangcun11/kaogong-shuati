@@ -5,9 +5,9 @@ import { api, post } from '../api/client'
 import Icon from '../components/Icon.vue'
 
 interface Question {
-  id?: number
-  questionId: number
-  paperId: number
+  id?: number | string
+  questionId: number | string
+  paperId?: number
   chapter: string
   type: number
   content: string
@@ -40,6 +40,7 @@ const router = useRouter()
 const subject = computed(() => String(route.params.subject || ''))
 const category = computed(() => (route.params.category ? String(route.params.category) : ''))
 const paperId = computed(() => (typeof route.query.paperId === 'string' ? route.query.paperId : ''))
+const batchId = computed(() => (typeof route.query.batchId === 'string' ? route.query.batchId : ''))
 const generatedMode = computed(() => route.query.generated === '1')
 const questions = ref<Question[]>([])
 const loading = ref(true)
@@ -87,6 +88,12 @@ async function load() {
       const paper = JSON.parse(raw) as { title: string; questions: Question[] }
       questions.value = paper.questions || []
       document.title = `${paper.title} · 刷题`
+    } else if (batchId.value) {
+      const data = await api<{ questions: Question[]; batch: { name: string } }>(
+        `/api/custom/practice?batch_id=${encodeURIComponent(batchId.value)}&count=50`,
+      )
+      questions.value = data.questions || []
+      document.title = `${data.batch?.name || '自定义题库'} · 刷题`
     } else if (paperId.value) {
       const paper = await api<{ name: string; questions: Question[] }>(`/api/papers/${encodeURIComponent(paperId.value)}`)
       questions.value = paper.questions || []
