@@ -3,6 +3,8 @@ package api
 import (
 	"database/sql"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -84,6 +86,7 @@ type chapterStat struct {
 type dayStat struct {
 	Day   string `json:"d"`
 	Count int64  `json:"c"`
+	OK    int64  `json:"ok,omitempty"`
 }
 
 type statsResponse struct {
@@ -98,56 +101,85 @@ type statsResponse struct {
 
 func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 	u, _ := userFromContext(r.Context())
+	where := []string{"user_id = ?"}
+	args := []any{u.ID}
+	if subject := strings.TrimSpace(r.URL.Query().Get("subject")); subject != "" {
+		where = append(where, `question_id IN (
+			SELECT q.questionId FROM questions q JOIN papers p ON p.id = q.paperId
+			WHERE p.subjectName = ?)`)
+		args = append(args, subject)
+	}
+	if days := queryInt(r, "days", 0, 0, 3650); days > 0 {
+		where = append(where, "date(created_at) >= date('now','localtime','-"+strconv.Itoa(days)+" days')")
+	}
+	if from := strings.TrimSpace(r.URL.Query().Get("from")); from != "" {
+		where = append(where, "date(created_at) >= date(?)")
+		args = append(args, from)
+	}
+	if to := strings.TrimSpace(r.URL.Query().Get("to")); to != "" {
+		where = append(where, "date(created_at) <= date(?)")
+		args = append(args, to)
+	}
+	whereSQL := strings.Join(where, " AND ")
 	var total, correct, graded, wrong sql.NullInt64
 	err := s.db.QueryRowContext(r.Context(), `
 		SELECT COUNT(*),
 		       COALESCE(SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END), 0),
 		       COALESCE(SUM(CASE WHEN is_correct IS NOT NULL THEN 1 ELSE 0 END), 0),
 		       COALESCE(SUM(CASE WHEN is_correct = 0 AND archived = 0 THEN 1 ELSE 0 END), 0)
-		FROM practice_records WHERE user_id = ?`, u.ID).
+		FROM practice_records WHERE `+whereSQL, args...).
 		Scan(&total, &correct, &graded, &wrong)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "读取统计失败")
 		return
 	}
 	resp := statsResponse{
-		Total:     total.Int64,
-		Correct:   correct.Int64,
-		Wrong:     wrong.Int64,
-		ByChapter: make([]chapterStat, 0),
-		Last7:     make([]dayStat, 0),
-		Daily:     make([]dayStat, 0),
+		Total: total.Int64, Correct: correct.Int64, Wrong: wrong.Int64,
+		ByChapter: make([]chapterStat, 0), Last7: make([]dayStat, 0), Daily: make([]dayStat, 0),
 	}
 	if graded.Int64 > 0 {
 		resp.Rate = correct.Int64 * 100 / graded.Int64
 	}
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT chapter, COUNT(*) c, COALESCE(SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END), 0) ok
-		FROM practice_records WHERE user_id = ?
-		GROUP BY chapter ORDER BY c DESC LIMIT 20`, u.ID)
+		FROM practice_records WHERE `+whereSQL+`
+		GROUP BY chapter ORDER BY c DESC LIMIT 20`, args...)
 	if err == nil {
-		defer rows.Close()
 		for rows.Next() {
 			var x chapterStat
-			if err := rows.Scan(&x.Chapter, &x.Count, &x.OK); err == nil {
+			if rows.Scan(&x.Chapter, &x.Count, &x.OK) == nil {
 				resp.ByChapter = append(resp.ByChapter, x)
 			}
 		}
+		rows.Close()
 	}
-	days, err := s.db.QueryContext(r.Context(), `
-		SELECT date(created_at) d, COUNT(*) c
-		FROM practice_records
-		WHERE user_id = ? AND created_at >= date('now','localtime','-6 days')
-		GROUP BY date(created_at) ORDER BY d`, u.ID)
+	daysRows, err := s.db.QueryContext(r.Context(), `
+		SELECT date(created_at) d, COUNT(*) c,
+		       COALESCE(SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END), 0) ok
+		FROM practice_records WHERE `+whereSQL+`
+		  AND date(created_at) >= date('now','localtime','-7 days')
+		GROUP BY date(created_at) ORDER BY d`, args...)
 	if err == nil {
-		defer days.Close()
-		for days.Next() {
+		for daysRows.Next() {
 			var x dayStat
-			if err := days.Scan(&x.Day, &x.Count); err == nil {
+			if daysRows.Scan(&x.Day, &x.Count, &x.OK) == nil {
 				resp.Last7 = append(resp.Last7, x)
+			}
+		}
+		daysRows.Close()
+	}
+	dailyRows, err := s.db.QueryContext(r.Context(), `
+		SELECT date(created_at) d, COUNT(*) c
+		FROM practice_records WHERE `+whereSQL+`
+		GROUP BY date(created_at) ORDER BY d DESC LIMIT 30`, args...)
+	if err == nil {
+		for dailyRows.Next() {
+			var x dayStat
+			if dailyRows.Scan(&x.Day, &x.Count) == nil {
 				resp.Daily = append(resp.Daily, x)
 			}
 		}
+		dailyRows.Close()
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

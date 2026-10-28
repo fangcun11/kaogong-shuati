@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type categoryRow struct {
@@ -488,7 +489,8 @@ func (s *Server) practice(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "缺少 subject")
 		return
 	}
-	limit := queryInt(r, "n", 15, 1, 50)
+	n := queryInt(r, "n", 10, 1, 50)
+	custom := r.URL.Query().Get("custom") == "1"
 	chapters := parseCSV(r.URL.Query().Get("chapters"))
 	if len(chapters) == 0 {
 		if ch := strings.TrimSpace(r.URL.Query().Get("chapter")); ch != "" {
@@ -497,47 +499,58 @@ func (s *Server) practice(w http.ResponseWriter, r *http.Request) {
 	}
 	group := strings.TrimSpace(r.URL.Query().Get("group"))
 	sub := strings.TrimSpace(r.URL.Query().Get("sub"))
-	from, to := yearRange()
+	year := strings.TrimSpace(r.URL.Query().Get("year"))
+	difficulty := strings.TrimSpace(r.URL.Query().Get("difficulty"))
+	mock := strings.TrimSpace(r.URL.Query().Get("mock"))
+
+	fetchN := n
+	if custom {
+		fetchN = n * 3
+		if fetchN > 150 {
+			fetchN = 150
+		}
+	}
+	from, to := yearRangeFor(year)
+	diffSQL, diffArgs := difficultyWhere(difficulty)
+	mockSQL := mockWhere(mock)
+
+	where := []string{"p.subjectName = ?", "substr(p.name,1,4) BETWEEN ? AND ?"}
+	args := []any{subject, from, to}
+	where = append(where, diffSQL, mockSQL)
+	args = append(args, diffArgs...)
 
 	var ids []int64
 	var err error
-	if len(chapters) > 0 {
+	if group != "" {
+		where = append(where, "qc.category = ?")
+		args = append(args, group)
+		if sub != "" && sub != "全部" {
+			where = append(where, "qc.sub = ?")
+			args = append(args, sub)
+		}
+		args = append(args, fetchN)
+		ids, err = s.queryQuestionIDs(r, `SELECT qc.question_id FROM question_categories qc
+			JOIN questions q ON q.questionId = qc.question_id
+			JOIN papers p ON p.id = q.paperId
+			WHERE `+strings.Join(where, " AND ")+`
+			GROUP BY qc.question_id ORDER BY RANDOM() LIMIT ?`, args...)
+	} else if len(chapters) > 0 {
 		marks := strings.TrimSuffix(strings.Repeat("?,", len(chapters)), ",")
-		args := []any{subject, from, to}
+		where = append(where, "q.chapter IN ("+marks+")")
 		for _, c := range chapters {
 			args = append(args, c)
 		}
-		args = append(args, limit)
-		ids, err = s.queryQuestionIDs(r, `
-			SELECT q.questionId FROM questions q JOIN papers p ON p.id = q.paperId
-			WHERE p.subjectName = ? AND substr(p.name,1,4) BETWEEN ? AND ?
-			  AND q.chapter IN (`+marks+`) GROUP BY q.questionId ORDER BY RANDOM() LIMIT ?`, args...)
-	} else if group != "" {
-		args := []any{subject, from, to, group}
-		query := `SELECT q.questionId FROM questions q JOIN papers p ON p.id = q.paperId
-			WHERE p.subjectName = ? AND substr(p.name,1,4) BETWEEN ? AND ? AND q.chapter = ?
-			GROUP BY q.questionId ORDER BY RANDOM() LIMIT ?`
-		if sub != "" && sub != "全部" {
-			query = `SELECT qc.question_id FROM question_categories qc
-				JOIN questions q ON q.questionId = qc.question_id
-				JOIN papers p ON p.id = q.paperId
-				WHERE p.subjectName = ? AND substr(p.name,1,4) BETWEEN ? AND ?
-				  AND qc.category = ? AND qc.sub = ? GROUP BY qc.question_id ORDER BY RANDOM() LIMIT ?`
-			args = []any{subject, from, to, group, sub, limit}
-		} else {
-			query = `SELECT qc.question_id FROM question_categories qc
-				JOIN questions q ON q.questionId = qc.question_id
-				JOIN papers p ON p.id = q.paperId
-				WHERE p.subjectName = ? AND substr(p.name,1,4) BETWEEN ? AND ?
-				  AND qc.category = ? GROUP BY qc.question_id ORDER BY RANDOM() LIMIT ?`
-			args = []any{subject, from, to, group, limit}
-		}
-		ids, err = s.queryQuestionIDs(r, query, args...)
+		args = append(args, fetchN)
+		ids, err = s.queryQuestionIDs(r, `SELECT q.questionId FROM questions q
+			JOIN papers p ON p.id = q.paperId
+			WHERE `+strings.Join(where, " AND ")+`
+			GROUP BY q.questionId ORDER BY RANDOM() LIMIT ?`, args...)
 	} else {
-		ids, err = s.queryQuestionIDs(r, `
-			SELECT q.questionId FROM questions q JOIN papers p ON p.id = q.paperId
-			WHERE p.subjectName = ? AND substr(p.name,1,4) BETWEEN ? AND ?
-			GROUP BY q.questionId ORDER BY RANDOM() LIMIT ?`, subject, from, to, limit)
+		args = append(args, fetchN)
+		ids, err = s.queryQuestionIDs(r, `SELECT q.questionId FROM questions q
+			JOIN papers p ON p.id = q.paperId
+			WHERE `+strings.Join(where, " AND ")+`
+			GROUP BY q.questionId ORDER BY RANDOM() LIMIT ?`, args...)
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "抽题失败")
@@ -548,13 +561,13 @@ func (s *Server) practice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	marks := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
-	args := make([]any, 0, len(ids))
+	queryArgs := make([]any, 0, len(ids))
 	for _, id := range ids {
-		args = append(args, id)
+		queryArgs = append(queryArgs, id)
 	}
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT questionId, paperId, chapter, type, content, contentHtml, options, answer, answerIndex, difficulty, analysis
-		FROM questions WHERE questionId IN (`+marks+`) GROUP BY questionId`, args...)
+		FROM questions WHERE questionId IN (`+marks+`) GROUP BY questionId`, queryArgs...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "读取题目失败")
 		return
@@ -568,7 +581,135 @@ func (s *Server) practice(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	out = s.enrichMaterials(r, subject, out)
+	out = s.enrichPracticeGroups(r, subject, out)
+	max := practiceMax(subject, group, chapters)
+	if custom {
+		max = n
+	}
+	out = trimPracticeQuestions(out, max)
 	writeJSON(w, http.StatusOK, out)
+}
+
+func yearRangeFor(year string) (string, string) {
+	to := time.Now().Year()
+	if year == "all" {
+		return "0000", itoa(to)
+	}
+	n := 10
+	if year != "" {
+		if v, err := strconv.Atoi(year); err == nil && v >= 3 {
+			n = v
+		}
+	}
+	return itoa(to - n + 1), itoa(to)
+}
+
+func difficultyWhere(d string) (string, []any) {
+	min, max := difficultyRange(d)
+	if d == "" || d == "random" {
+		return "1=1", nil
+	}
+	return "q.difficulty BETWEEN ? AND ?", []any{min, max}
+}
+
+func mockWhere(mock string) string {
+	switch mock {
+	case "0":
+		return "(p.category NOT LIKE '%模拟%' AND p.category NOT LIKE '%模考%')"
+	case "1":
+		return "(p.category LIKE '%模拟%' OR p.category LIKE '%模考%')"
+	default:
+		return "1=1"
+	}
+}
+
+func practiceMax(subject, group string, chapters []string) int {
+	if subject == "公务员·申论" || subject == "事业编·综应" {
+		return 2
+	}
+	names := append([]string{group}, chapters...)
+	for _, name := range names {
+		if strings.Contains(name, "资料") || strings.Contains(name, "判断") || strings.Contains(name, "言语") {
+			return 20
+		}
+	}
+	return 15
+}
+
+func (s *Server) enrichPracticeGroups(r *http.Request, subject string, qs []questionJSON) []questionJSON {
+	if len(qs) == 0 {
+		return qs
+	}
+	ids := make([]any, 0, len(qs))
+	for _, q := range qs {
+		ids = append(ids, q.QuestionID)
+	}
+	marks := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	rows, err := s.db.QueryContext(r.Context(), `
+		SELECT mm.question_id, mm.material_id FROM q_material_map mm
+		JOIN q_materials m ON m.material_id = mm.material_id AND m.subject = mm.subject
+		WHERE mm.subject = ? AND mm.material_id IS NOT NULL AND mm.question_id IN (`+marks+`)`, append([]any{subject}, ids...)...)
+	if err != nil {
+		return qs
+	}
+	defer rows.Close()
+	groups := map[int64]string{}
+	for rows.Next() {
+		var qid int64
+		var gid string
+		if rows.Scan(&qid, &gid) == nil {
+			groups[qid] = gid
+		}
+	}
+	counts := map[string]int{}
+	for _, gid := range groups {
+		counts[gid]++
+	}
+	indexes := map[string]int{}
+	for i := range qs {
+		gid, ok := groups[qs[i].QuestionID]
+		if !ok {
+			continue
+		}
+		qs[i].GroupID = gid
+		qs[i].GroupIndex = indexes[gid]
+		qs[i].GroupTotal = counts[gid]
+		indexes[gid]++
+	}
+	return qs
+}
+
+func trimPracticeQuestions(qs []questionJSON, max int) []questionJSON {
+	if max <= 0 || len(qs) <= max {
+		return qs
+	}
+	out := append([]questionJSON(nil), qs...)
+	for i := len(out) - 1; i >= 0 && len(out) > max; i-- {
+		if out[i].GroupID == "" {
+			out = append(out[:i], out[i+1:]...)
+		}
+	}
+	if len(out) > max {
+		gids := map[string]bool{}
+		for _, q := range out {
+			if q.GroupID != "" {
+				gids[q.GroupID] = true
+			}
+		}
+		for gid := range gids {
+			if len(out) <= max {
+				break
+			}
+			next := out[:0]
+			for _, q := range out {
+				if q.GroupID != gid {
+					next = append(next, q)
+				}
+			}
+			out = next
+		}
+	}
+	return out
 }
 
 func (s *Server) enrichMaterials(r *http.Request, subject string, qs []questionJSON) []questionJSON {
