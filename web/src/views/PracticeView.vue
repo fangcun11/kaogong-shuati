@@ -54,14 +54,23 @@ const noteSaved = ref(false)
 const saving = ref(false)
 const startedAt = ref(Date.now())
 const finished = ref(false)
+const showCard = ref(false)
+const reciteMode = ref(false)
 
 const current = computed(() => questions.value[index.value])
 const currentKey = computed(() => (current.value ? String(current.value.id ?? current.value.questionId) : ''))
 const currentAnswer = computed(() => (current.value ? answers[currentKey.value] : undefined))
 const submitted = computed(() => !!currentAnswer.value?.check)
+const showResult = computed(() => submitted.value || reciteMode.value)
 const isMulti = computed(() => current.value?.type === 2)
 const progress = computed(() => (questions.value.length ? Math.round(((index.value + 1) / questions.value.length) * 100) : 0))
 const answeredCount = computed(() => Object.keys(answers).filter((key) => !!answers[key].check).length)
+const correctCount = computed(() => Object.values(answers).filter((a) => a.check?.ok === true).length)
+const wrongCount = computed(() => Object.values(answers).filter((a) => a.check?.ok === false).length)
+const accuracy = computed(() => {
+  const checked = Object.values(answers).filter((a) => !!a.check).length
+  return checked ? Math.round((correctCount.value / checked) * 100) : 0
+})
 const isFavorite = computed(() => !!current.value && favoriteIds.value.has(Number(current.value.id ?? current.value.questionId)))
 
 function optionText(text: string): string {
@@ -76,6 +85,45 @@ function answerKey() {
   const q = current.value
   if (!q) return ''
   return String(q.id ?? q.questionId)
+}
+
+function correctIndices(q: Question): number[] {
+  if (Number.isFinite(q.answerIndex) && q.answerIndex >= 0) return [q.answerIndex]
+  const raw = String(q.answer || '').trim()
+  if (raw.startsWith('[')) {
+    try {
+      const arr = JSON.parse(raw)
+      if (Array.isArray(arr)) return arr.map(Number).filter((x) => Number.isFinite(x))
+    } catch {
+      /* fall through */
+    }
+  }
+  if (/^[A-H]{2,4}$/i.test(raw)) return [...raw.toUpperCase()].map((ch) => ch.charCodeAt(0) - 65)
+  if (/^[A-H]$/i.test(raw)) return [raw.toUpperCase().charCodeAt(0) - 65]
+  return []
+}
+
+function answerText(q: Question): string {
+  const indices = correctIndices(q)
+  if (indices.length) return indices.map((i) => optionKey(i)).join('、')
+  return q.answer || '暂无答案'
+}
+
+function questionState(i: number): string {
+  const q = questions.value[i]
+  const key = String(q.id ?? q.questionId)
+  const state = answers[key]
+  if (i === index.value) return 'current'
+  if (!state?.check) return 'todo'
+  if (state.check.ok === true) return 'correct'
+  if (state.check.ok === false) return 'wrong'
+  return 'answered'
+}
+
+function jumpTo(i: number) {
+  index.value = i
+  showCard.value = false
+  startedAt.value = Date.now()
 }
 
 async function load() {
@@ -144,7 +192,7 @@ async function loadNote() {
 }
 
 function selectOption(i: number) {
-  if (!current.value || submitted.value) return
+  if (!current.value || submitted.value || reciteMode.value) return
   const key = answerKey()
   const state = answers[key] || (answers[key] = { selected: [], costMs: 0 })
   if (isMulti.value) {
@@ -186,6 +234,12 @@ async function submitAnswer() {
 
 function optionClass(i: number) {
   const state = currentAnswer.value
+  if (reciteMode.value && !state?.check) {
+    return {
+      selected: state?.selected.includes(i),
+      correct: !!current.value && correctIndices(current.value).includes(i),
+    }
+  }
   if (!state?.check) return { selected: state?.selected.includes(i) }
   return {
     selected: state.selected.includes(i),
@@ -202,6 +256,7 @@ function goNext() {
     noteOpen.value = false
     loadNote()
   } else {
+    showCard.value = false
     finished.value = true
   }
 }
@@ -271,6 +326,7 @@ async function deleteNote() {
 function restart() {
   finished.value = false
   index.value = 0
+  showCard.value = false
   for (const key of Object.keys(answers)) delete answers[key]
   startedAt.value = Date.now()
 }
@@ -295,6 +351,8 @@ onMounted(load)
       <span class="tag tag-type">{{ isMulti ? '多选' : '单选' }}</span>
       <span class="tag tag-difficulty">难度 {{ current?.difficulty || '—' }}</span>
       <span class="q-actions">
+        <button class="q-card-btn" title="答题卡" @click="showCard = true">▦</button>
+        <button class="q-card-btn" :class="{ on: reciteMode }" title="背题模式" @click="reciteMode = !reciteMode">背</button>
         <button class="q-fav" :class="{ on: isFavorite }" title="收藏" @click="toggleFavorite">
           <Icon name="star" :size="15" />
         </button>
@@ -317,7 +375,7 @@ onMounted(load)
           :key="i"
           class="option"
           :class="optionClass(i)"
-          :disabled="submitted"
+          :disabled="submitted || reciteMode"
           @click="selectOption(i)"
         >
           <span class="opt-key">{{ optionKey(i) }}</span>
@@ -325,12 +383,12 @@ onMounted(load)
         </button>
       </div>
 
-      <div v-if="submitted" class="result-banner" :class="currentAnswer?.check?.ok === false ? 'no' : 'ok'">
-        <b>{{ currentAnswer?.check?.ok === false ? '回答错误' : currentAnswer?.check?.ok === true ? '回答正确' : '已提交' }}</b>
-        <span v-if="currentAnswer?.check?.correctText?.length">正确答案：{{ currentAnswer.check.correctText.join('、') }}</span>
+      <div v-if="showResult" class="result-banner" :class="reciteMode ? 'ok' : currentAnswer?.check?.ok === false ? 'no' : 'ok'">
+        <b>{{ reciteMode ? '背题模式' : currentAnswer?.check?.ok === false ? '回答错误' : currentAnswer?.check?.ok === true ? '回答正确' : '已提交' }}</b>
+        <span>正确答案：{{ current ? answerText(current) : '—' }}</span>
       </div>
 
-      <div v-if="submitted && current?.analysis" class="answer-box">
+      <div v-if="showResult && current?.analysis" class="answer-box">
         <div class="ab-title">解析</div>
         <div class="ab-body">{{ current.analysis }}</div>
       </div>
@@ -347,7 +405,7 @@ onMounted(load)
       <div class="action-row vue-quiz-actions">
         <button class="btn btn-ghost" :disabled="index === 0" @click="goPrev">上一题</button>
         <button class="btn btn-ghost" @click="noteOpen = !noteOpen">{{ noteSaved ? '查看笔记' : '添加笔记' }}</button>
-        <button v-if="!submitted" class="btn btn-primary" :disabled="!currentAnswer?.selected.length || saving" @click="submitAnswer">
+        <button v-if="!submitted && !reciteMode" class="btn btn-primary" :disabled="!currentAnswer?.selected.length || saving" @click="submitAnswer">
           {{ saving ? '判分中…' : '提交答案' }}
         </button>
         <button v-else class="btn btn-primary" @click="goNext">{{ index === questions.length - 1 ? '完成练习' : '下一题' }}</button>
@@ -357,10 +415,39 @@ onMounted(load)
     <section v-else class="card vue-finished">
       <div class="vue-finished-icon"><Icon name="trophy" :size="34" /></div>
       <h2>练习完成</h2>
-      <p class="muted">共 {{ questions.length }} 题，已答 {{ answeredCount }} 题</p>
+      <div class="vue-finished-stats">
+        <div><b>{{ questions.length }}</b><span>总题数</span></div>
+        <div><b>{{ answeredCount }}</b><span>已作答</span></div>
+        <div><b>{{ correctCount }}</b><span>正确</span></div>
+        <div><b>{{ wrongCount }}</b><span>错误</span></div>
+        <div><b>{{ accuracy }}%</b><span>正确率</span></div>
+      </div>
       <button class="btn btn-primary btn-block" @click="restart">再来一组</button>
-      <button class="btn btn-ghost btn-block" style="margin-top: 8px" @click="router.push({ name: 'subject', params: { name: subject } })">返回题库</button>
+      <button class="btn btn-ghost btn-block" style="margin-top: 8px" @click="router.push({ name: 'home' })">返回首页</button>
     </section>
+
+    <div v-if="showCard" class="vue-sheet-overlay" @click.self="showCard = false">
+      <div class="vue-sheet">
+        <div class="vue-sheet-head">
+          <b>答题卡</b>
+          <button @click="showCard = false">关闭</button>
+        </div>
+        <div class="vue-answer-grid">
+          <button
+            v-for="(q, i) in questions"
+            :key="i"
+            :class="questionState(i)"
+            @click="jumpTo(i)"
+          >{{ i + 1 }}</button>
+        </div>
+        <div class="vue-answer-legend">
+          <span><i class="todo" />未答</span>
+          <span><i class="current" />当前</span>
+          <span><i class="correct" />正确</span>
+          <span><i class="wrong" />错误</span>
+        </div>
+      </div>
+    </div>
 
     <div v-if="error" class="vue-inline-error">{{ error }}</div>
   </template>
@@ -381,4 +468,23 @@ onMounted(load)
 .vue-inline-error { margin-top: 12px; color: var(--red); font-size: 13px; }
 .vue-finished { text-align: center; padding: 30px 20px; margin-top: 18px; }
 .vue-finished-icon { width: 58px; height: 58px; border-radius: 18px; display: grid; place-items: center; margin: 0 auto 12px; background: var(--amber-soft); color: var(--amber); }
+.vue-finished-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 18px 0 22px; }
+.vue-finished-stats b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+.vue-finished-stats span { display: block; margin-top: 2px; color: var(--text-3); font-size: 10px; }
+.q-card-btn.on { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+.vue-sheet-overlay { position: fixed; inset: 0; z-index: 500; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.38); }
+.vue-sheet { width: min(560px, 100%); max-height: 80vh; overflow: auto; border-radius: 20px 20px 0 0; background: var(--card); padding: 18px 18px calc(18px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 30px rgba(0,0,0,.18); }
+.vue-sheet-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.vue-sheet-head button { border: 0; background: none; color: var(--primary); font: inherit; font-size: 13px; cursor: pointer; }
+.vue-answer-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; }
+.vue-answer-grid button { aspect-ratio: 1; border: 1px solid var(--border); border-radius: 9px; background: var(--card); color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer; }
+.vue-answer-grid button.current { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); font-weight: 800; }
+.vue-answer-grid button.correct { border-color: var(--green); color: var(--green); background: var(--green-soft); }
+.vue-answer-grid button.wrong { border-color: var(--red); color: var(--red); background: var(--red-soft); }
+.vue-answer-grid button.answered { border-color: var(--primary); color: var(--primary); }
+.vue-answer-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 16px; color: var(--text-2); font-size: 11px; }
+.vue-answer-legend i { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border-radius: 3px; border: 1px solid var(--border); vertical-align: -1px; }
+.vue-answer-legend i.current { border-color: var(--primary); background: var(--primary-soft); }
+.vue-answer-legend i.correct { border-color: var(--green); background: var(--green-soft); }
+.vue-answer-legend i.wrong { border-color: var(--red); background: var(--red-soft); }
 </style>
