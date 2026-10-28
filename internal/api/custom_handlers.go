@@ -601,12 +601,11 @@ func customImagesHTML(images []customImage, role string) string {
 
 func customHTML(text string, images []customImage, role string) string {
 	body := htmlEscape(text)
-	body = strings.ReplaceAll(body, "\n", "<br>")
 	img := customImagesHTML(images, role)
 	if body == "" && img == "" {
 		return ""
 	}
-	return "<p>" + body + "</p>" + img
+	return body + img
 }
 
 func groupCustomQuestions(rows []customQuestionRow, batchName, subject string) []map[string]any {
