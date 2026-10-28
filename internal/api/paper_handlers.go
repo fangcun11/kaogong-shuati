@@ -32,13 +32,50 @@ var xingceModules = []moduleSpec{
 	{"资料分析", 20, "tint-green"},
 }
 
-var zhiCeModules = []moduleSpec{
-	{"政治理论", 10, "tint-red"},
-	{"常识判断", 15, "tint-amber"},
-	{"言语理解与表达", 25, "tint-blue"},
-	{"数量关系", 10, "tint-orange"},
-	{"判断推理", 25, "tint-violet"},
-	{"资料分析", 15, "tint-green"},
+type zhiCeTemplate struct {
+	Count   int
+	Modules []moduleSpec
+}
+
+var zhiCeTemplates = map[string]zhiCeTemplate{
+	"联考A类": {Count: 100, Modules: []moduleSpec{
+		{"常识判断", 20, "tint-amber"},
+		{"言语理解与表达", 20, "tint-blue"},
+		{"数量关系", 10, "tint-orange"},
+		{"判断推理", 35, "tint-violet"},
+		{"资料分析", 15, "tint-green"},
+	}},
+	// B/C 类的官方模块包含“数量分析/综合分析”，题库分类目前没有这两个
+	// 独立分类，先按通用五模块抽取，避免生成空卷。
+	"联考B类": {Count: 100, Modules: []moduleSpec{
+		{"常识判断", 20, "tint-amber"},
+		{"言语理解与表达", 25, "tint-blue"},
+		{"数量关系", 15, "tint-orange"},
+		{"判断推理", 30, "tint-violet"},
+		{"资料分析", 10, "tint-green"},
+	}},
+	"联考C类": {Count: 100, Modules: []moduleSpec{
+		{"常识判断", 20, "tint-amber"},
+		{"言语理解与表达", 25, "tint-blue"},
+		{"数量关系", 10, "tint-orange"},
+		{"判断推理", 30, "tint-violet"},
+		{"资料分析", 15, "tint-green"},
+	}},
+	"山东": {Count: 90, Modules: []moduleSpec{
+		{"常识判断", 15, "tint-amber"},
+		{"言语理解与表达", 20, "tint-blue"},
+		{"数量关系", 5, "tint-orange"},
+		{"判断推理", 35, "tint-violet"},
+		{"资料分析", 15, "tint-green"},
+	}},
+}
+
+func zhiCeTemplateFor(category string) (zhiCeTemplate, bool) {
+	t, ok := zhiCeTemplates[category]
+	if !ok {
+		t = zhiCeTemplates["联考A类"]
+	}
+	return t, ok
 }
 
 func (s *Server) generatePaper(w http.ResponseWriter, r *http.Request) {
@@ -54,10 +91,20 @@ func (s *Server) generatePaper(w http.ResponseWriter, r *http.Request) {
 	modules := xingceModules
 	defaultCount := 130
 	duration := 120
+	notice := ""
 	if req.Subject == "事业编·职测" {
-		modules = zhiCeModules
-		defaultCount = 100
+		if req.Category == "" {
+			req.Category = "联考A类"
+		}
+		tpl, exact := zhiCeTemplateFor(req.Category)
+		modules = tpl.Modules
+		defaultCount = tpl.Count
 		duration = 90
+		if !exact {
+			notice = "职测卷型未知，已按联考 A 类模板组卷"
+		} else if req.Category == "联考B类" || req.Category == "联考C类" {
+			notice = "该卷型暂按通用五模块抽题，官方特殊模块会在后续版本补齐"
+		}
 	}
 	if req.Count <= 0 {
 		req.Count = defaultCount
@@ -155,9 +202,11 @@ func (s *Server) generatePaper(w http.ResponseWriter, r *http.Request) {
 		questions[i].Module = moduleOf[questions[i].QuestionID]
 	}
 	title := fmt.Sprintf("智能组卷 · %s %d题", req.Subject, len(questions))
-	notice := ""
 	if len(questions) < req.Count {
-		notice = fmt.Sprintf("题库资源有限，实际组卷 %d 题", len(questions))
+		if notice != "" {
+			notice += "；"
+		}
+		notice += fmt.Sprintf("题库资源有限，实际组卷 %d 题", len(questions))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok": true, "paperId": newPaperID(), "title": title, "subject": req.Subject,
@@ -169,7 +218,10 @@ func (s *Server) generatePaper(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) sourceCounts(r *http.Request, ids []int64) map[string]int {
-	counts := map[string]int{"tikuA": 0, "tikuB": 0, "tikuC": 0, "tikuD": 0, "other": 0}
+	counts := map[string]int{
+		"tikuA": 0, "tikuB": 0, "tikuC": 0, "tikuD": 0,
+		"zcA": 0, "zcB": 0, "zcC": 0, "sd": 0, "other": 0,
+	}
 	if len(ids) == 0 {
 		return counts
 	}
@@ -197,6 +249,16 @@ func (s *Server) sourceCounts(r *http.Request, ids []int64) map[string]int {
 }
 
 func sourceOfCategory(category string) string {
+	switch category {
+	case "联考A类":
+		return "zcA"
+	case "联考B类":
+		return "zcB"
+	case "联考C类":
+		return "zcC"
+	case "山东":
+		return "sd"
+	}
 	if strings.Contains(category, "国考") {
 		return "tikuA"
 	}
