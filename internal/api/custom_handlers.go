@@ -439,7 +439,7 @@ func (s *Server) customPractice(w http.ResponseWriter, r *http.Request) {
 	out := groupCustomQuestions(qs, batchName, subject)
 	count := queryInt(r, "count", 0, 0, 100)
 	if count > 0 && len(out) > count {
-		out = out[:count]
+		out = trimCustomPractice(out, count)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"questions": out, "batch": map[string]any{"id": batchID, "name": batchName, "subject": subject}})
 }
@@ -463,12 +463,26 @@ func (s *Server) customCheck(w http.ResponseWriter, r *http.Request) {
 	selected := parseSelected(req.Selected)
 	res := gradeCustom(q, selected)
 	u, _ := userFromContext(r.Context())
-	group := "custom"
+	batchID := req.BatchID
+	if batchID == 0 {
+		batchID = q.BatchID
+	}
+	var batchName, batchSubject string
+	if batchID > 0 && s.ownsBatch(r, u.ID, batchID) {
+		_ = s.db.QueryRowContext(r.Context(), `SELECT name, subject FROM custom_batches WHERE id = ?`, batchID).Scan(&batchName, &batchSubject)
+	}
+	chapter := req.Chapter
+	if chapter == "" {
+		chapter = batchName
+	}
+	if batchSubject == "" {
+		batchSubject = "自定义"
+	}
 	_, _ = s.db.ExecContext(r.Context(), `
 		INSERT INTO practice_records
 		(user_id, question_id, subject, chapter, question_type, selected, is_correct, cost_ms, group_key)
 		VALUES (?, ?, ?, ?, 0, ?, ?, 0, ?)`,
-		u.ID, req.QuestionID, "自定义", req.Chapter, mustJSON(selected), boolToInt(res.OK), group)
+		u.ID, req.QuestionID, batchSubject, chapter, mustJSON(selected), boolToInt(res.OK), "custom")
 	writeJSON(w, http.StatusOK, res)
 }
 
@@ -503,6 +517,27 @@ func scanCustomQuestionRow(row customScanner) (customQuestionRow, error) {
 	var q customQuestionRow
 	err := row.Scan(&q.ID, &q.BatchID, &q.Prompt, &q.Material, &q.Options, &q.Answer, &q.AnswerIndex, &q.Analysis, &q.Images, &q.MaterialID)
 	return q, err
+}
+
+func trimCustomPractice(questions []map[string]any, count int) []map[string]any {
+	if count <= 0 || len(questions) <= count {
+		return questions
+	}
+	end := count
+	last := questions[count-1]
+	gid, _ := last["groupId"].(string)
+	total, _ := last["groupTotal"].(int)
+	if gid != "" && total > 0 {
+		for i := count; i < len(questions); i++ {
+			if qgid, _ := questions[i]["groupId"].(string); qgid == gid {
+				if idx, _ := questions[i]["groupIndex"].(int); idx == total-1 {
+					end = i + 1
+					break
+				}
+			}
+		}
+	}
+	return questions[:end]
 }
 
 func customQuestionJSON(q customQuestionRow) map[string]any {

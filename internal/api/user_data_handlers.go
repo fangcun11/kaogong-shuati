@@ -52,6 +52,7 @@ func (s *Server) submitRecord(w http.ResponseWriter, r *http.Request) {
 		Chapter    string          `json:"chapter"`
 		Type       int64           `json:"type"`
 		Selected   json.RawMessage `json:"selected"`
+		Correct    *bool           `json:"correct"`
 		CostMs     int64           `json:"costMs"`
 		PaperID    int64           `json:"paperId"`
 	}
@@ -101,6 +102,9 @@ func (s *Server) submitRecord(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if req.Correct != nil {
+		correct = boolToInt(req.Correct)
+	}
 	groupKey := groupForSubject(req.Subject)
 	encoded, _ := json.Marshal(selected)
 	res, err := s.db.ExecContext(r.Context(), `
@@ -113,7 +117,24 @@ func (s *Server) submitRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	lastID, _ := res.LastInsertId()
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": lastID, "removedFromWrong": false})
+	removedWrong := false
+	if v, ok := correct.(int); ok && v == 1 {
+		var correctDays int
+		_ = s.db.QueryRowContext(r.Context(), `
+			SELECT COUNT(DISTINCT date(created_at)) FROM practice_records
+			WHERE user_id = ? AND question_id = ? AND is_correct = 1`,
+			currentUserID(r), id).Scan(&correctDays)
+		if correctDays >= 3 {
+			archive, _ := s.db.ExecContext(r.Context(), `
+				UPDATE practice_records SET archived = 1
+				WHERE user_id = ? AND question_id = ? AND is_correct = 0 AND archived = 0`,
+				currentUserID(r), id)
+			if n, _ := archive.RowsAffected(); n > 0 {
+				removedWrong = true
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": lastID, "removedFromWrong": removedWrong})
 }
 
 func (s *Server) recent(w http.ResponseWriter, r *http.Request) {
@@ -144,7 +165,7 @@ func (s *Server) recent(w http.ResponseWriter, r *http.Request) {
 func (s *Server) wrongGroups(w http.ResponseWriter, r *http.Request) {
 	u, _ := userFromContext(r.Context())
 	rows, err := s.db.QueryContext(r.Context(), `
-		SELECT group_key, COUNT(*) FROM practice_records
+		SELECT group_key, COUNT(DISTINCT question_id) FROM practice_records
 		WHERE user_id = ? AND is_correct = 0 AND archived = 0 GROUP BY group_key`, u.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "读取错题分组失败")
@@ -167,13 +188,18 @@ func (s *Server) wrongList(w http.ResponseWriter, r *http.Request) {
 	limit := queryInt(r, "limit", 50, 1, 200)
 	offset := queryInt(r, "offset", 0, 0, 1<<30)
 	group := r.URL.Query().Get("group")
-	args := []any{u.ID}
+	filterArgs := []any{u.ID}
+	queryArgs := []any{u.ID}
 	cond := ""
 	if r.URL.Query().Has("group") {
 		cond = " AND r.group_key = ?"
-		args = append(args, group)
+		filterArgs = append(filterArgs, group)
+		queryArgs = append(queryArgs, group)
 	}
-	args = append(args, limit, offset)
+	queryArgs = append(queryArgs, u.ID, limit, offset)
+	total := countRows(r, s, `
+		SELECT COUNT(DISTINCT question_id) FROM practice_records r
+		WHERE r.user_id = ? AND r.is_correct = 0 AND r.archived = 0`+cond, filterArgs...)
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT r.id, r.question_id, r.subject, r.chapter, r.created_at, COALESCE(q.content,''), COALESCE(q.type,0)
 		FROM practice_records r
@@ -181,7 +207,7 @@ func (s *Server) wrongList(w http.ResponseWriter, r *http.Request) {
 		  AND q.id = (SELECT MIN(q2.id) FROM questions q2 WHERE q2.questionId = q.questionId)
 		WHERE r.user_id = ? AND r.is_correct = 0 AND r.archived = 0`+cond+`
 		AND r.id IN (SELECT MAX(id) FROM practice_records WHERE user_id = ? AND is_correct = 0 AND archived = 0 GROUP BY question_id)
-		ORDER BY r.id DESC LIMIT ? OFFSET ?`, append([]any{u.ID}, args...)...)
+		ORDER BY r.id DESC LIMIT ? OFFSET ?`, queryArgs...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "读取错题失败")
 		return
@@ -195,7 +221,7 @@ func (s *Server) wrongList(w http.ResponseWriter, r *http.Request) {
 			list = append(list, map[string]any{"id": id, "questionId": numericID(qid), "subject": subject, "chapter": chapter, "time": created, "content": content, "type": qtype})
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"list": list, "total": len(list), "offset": offset, "limit": limit, "hasMore": false})
+	writeJSON(w, http.StatusOK, map[string]any{"list": list, "total": total, "offset": offset, "limit": limit, "hasMore": int64(offset+len(list)) < total})
 }
 
 func (s *Server) removeWrong(w http.ResponseWriter, r *http.Request) {
@@ -428,20 +454,41 @@ func (s *Server) organize(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "target 不合法")
 		return
 	}
-	_, err := s.db.ExecContext(r.Context(), `
-		UPDATE `+table+` SET group_key = CASE
-			WHEN subject = '公务员·行测' THEN '行测'
-			WHEN subject = '事业编·职测' THEN '职测'
-			WHEN subject = '公务员·申论' THEN '申论'
-			WHEN subject = '事业编·综应' THEN '综应'
-			WHEN subject = '自定义' THEN 'custom'
-			ELSE group_key END
-		WHERE user_id = ? AND group_key = ''`, u.ID)
+	total := countRows(r, s, `SELECT COUNT(*) FROM `+table+` WHERE user_id = ?`, u.ID)
+	res, err := s.db.ExecContext(r.Context(), `
+		UPDATE `+table+` SET
+		  group_key = CASE
+			WHEN subject IN ('公务员·行测', '行测') THEN '行测'
+			WHEN subject IN ('事业编·职测', '职测') THEN '职测'
+			WHEN subject IN ('公务员·申论', '申论') THEN '申论'
+			WHEN subject IN ('事业编·综应', '综应') THEN '综应'
+			WHEN subject IN ('自定义', 'custom') THEN 'custom'
+			ELSE group_key END,
+		  sub_key = COALESCE(
+			(SELECT qc.category FROM question_categories qc
+			 WHERE qc.question_id = CAST(`+table+`.question_id AS INTEGER) LIMIT 1),
+			sub_key)
+		WHERE user_id = ? AND (group_key = '' OR sub_key = '')`, u.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "整理失败")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	fixed, _ := res.RowsAffected()
+	rows, err := s.db.QueryContext(r.Context(), `SELECT group_key, COUNT(*) FROM `+table+` WHERE user_id = ? GROUP BY group_key`, u.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL", "读取整理结果失败")
+		return
+	}
+	counts := map[string]int64{}
+	for rows.Next() {
+		var key string
+		var n int64
+		if rows.Scan(&key, &n) == nil {
+			counts[key] = n
+		}
+	}
+	rows.Close()
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "total": total, "fixed": fixed, "groups": sourceGroups(counts)})
 }
 
 func decodeBody(w http.ResponseWriter, r *http.Request, v any) error {

@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -242,8 +243,8 @@ func (s *Server) aiOCR(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"notice": "识图转写员未启用或尚未配置 api_key"})
 		return
 	}
-	if len(req.Image) > 25<<20 {
-		writeError(w, http.StatusBadRequest, "TOO_LARGE", "图片过大")
+	if _, _, err := parseImageDataURL(req.Image); err != nil {
+		writeError(w, http.StatusBadRequest, "BAD_IMAGE", err.Error())
 		return
 	}
 	text, err := s.ai.CallVision(s.agentForUser(r, agent), "请逐字、完整、准确地转写这张图片中的全部文字、公式、图表和图形信息，不要解题。", []string{req.Image})
@@ -270,7 +271,24 @@ func (s *Server) aiStructure(w http.ResponseWriter, r *http.Request) {
 	}
 	var text string
 	if req.Image != "" {
+		if _, _, err := parseImageDataURL(req.Image); err != nil {
+			writeError(w, http.StatusBadRequest, "BAD_IMAGE", err.Error())
+			return
+		}
 		text, err = s.ai.CallVision(s.agentForUser(r, agent), "把图片中的题目整理成结构化 JSON，严格遵循系统提示中的字段和规则。", []string{req.Image})
+		if err != nil || strings.TrimSpace(text) == "" {
+			// Match the legacy pipeline: OCR first, then text structure.
+			ocr, ocrErr := s.ai.CallVision(s.agentForUser(r, agent), "请先逐字转写图片中的全部文字，不要解题。", []string{req.Image})
+			if ocrErr != nil || strings.TrimSpace(ocr) == "" {
+				if err != nil {
+					writeJSON(w, http.StatusOK, map[string]any{"notice": "题目解析失败：" + err.Error()})
+				} else {
+					writeJSON(w, http.StatusOK, map[string]any{"notice": "图片 OCR 未返回文本"})
+				}
+				return
+			}
+			text, err = s.ai.Call(s.agentForUser(r, agent), ocr)
+		}
 	} else {
 		text, err = s.ai.Call(s.agentForUser(r, agent), req.Text)
 	}
@@ -337,6 +355,24 @@ func (s *Server) aiGrade(w http.ResponseWriter, r *http.Request) {
 			mustJSON(map[string]string{"answer": req.Content}), groupForSubject(subject))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"notice": "批改完成", "score": nil, "result": result, "fullScore": fullScore})
+}
+
+func parseImageDataURL(raw string) (string, string, error) {
+	if !strings.HasPrefix(raw, "data:image/") {
+		return "", "", fmt.Errorf("缺少图片（data URL）")
+	}
+	parts := strings.SplitN(raw, ",", 2)
+	if len(parts) != 2 || !strings.Contains(parts[0], ";base64") {
+		return "", "", fmt.Errorf("图片格式不正确")
+	}
+	payload, err := base64.StdEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "", "", fmt.Errorf("图片 base64 格式不正确")
+	}
+	if len(payload) > 8<<20 {
+		return "", "", fmt.Errorf("图片过大（≤8MB）")
+	}
+	return parts[0], parts[1], nil
 }
 
 var fullScoreRE = regexp.MustCompile(`[（(]\s*(\d{1,2})\s*分\s*[）)]`)

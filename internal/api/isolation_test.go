@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -93,6 +94,89 @@ func TestUserDataIsolation(t *testing.T) {
 			t.Fatalf("bob GET %s status = %d, want 404", path, res.StatusCode)
 		}
 		res.Body.Close()
+	}
+}
+
+func TestRecordAutoArchivesWrongAfterThreeCorrectDays(t *testing.T) {
+	ts, srv := newTestServer(t)
+	client := testClient(t, ts)
+	loginTestUser(t, ts, client, "admin", "admin123456")
+	for _, day := range []string{"-3 day", "-2 day", "-1 day"} {
+		if _, err := srv.db.Exec(`INSERT INTO practice_records
+			(user_id, question_id, subject, chapter, question_type, selected, is_correct, group_key, created_at)
+			VALUES (1, '9999', '公务员·行测', '资料分析', 1, '[]', 1, '行测', datetime('now', ?))`, day); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := srv.db.Exec(`INSERT INTO practice_records
+		(user_id, question_id, subject, chapter, question_type, selected, is_correct, group_key)
+		VALUES (1, '9999', '公务员·行测', '资料分析', 1, '[]', 0, '行测')`); err != nil {
+		t.Fatal(err)
+	}
+	res := postJSON(t, client, ts.URL+"/api/records", map[string]any{
+		"questionId": 9999, "subject": "公务员·行测", "chapter": "资料分析",
+		"type": 1, "selected": []int{}, "correct": true,
+	})
+	var out struct {
+		RemovedFromWrong bool `json:"removedFromWrong"`
+	}
+	decodeJSON(t, res, &out)
+	if !out.RemovedFromWrong {
+		t.Fatal("wrong record was not auto-archived")
+	}
+}
+
+func TestWrongListGroupQuery(t *testing.T) {
+	ts, srv := newTestServer(t)
+	client := testClient(t, ts)
+	loginTestUser(t, ts, client, "admin", "admin123456")
+	if _, err := srv.db.Exec(`INSERT INTO practice_records
+		(user_id, question_id, subject, chapter, question_type, selected, is_correct, group_key)
+		VALUES (1, '1001', '公务员·行测', '资料分析', 1, '[]', 0, '行测')`); err != nil {
+		t.Fatal(err)
+	}
+	res, err := client.Get(ts.URL + "/api/records/wrong?group=" + url.QueryEscape("行测"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out struct {
+		Total int   `json:"total"`
+		List  []any `json:"list"`
+	}
+	decodeJSON(t, res, &out)
+	if out.Total != 1 || len(out.List) != 1 {
+		t.Fatalf("wrong group total=%d list=%d, want 1/1", out.Total, len(out.List))
+	}
+}
+
+func TestCustomPracticeKeepsGroupWhenCountCutsInside(t *testing.T) {
+	ts, _ := newTestServer(t)
+	client := testClient(t, ts)
+	loginTestUser(t, ts, client, "admin", "admin123456")
+	res := postJSON(t, client, ts.URL+"/api/custom/import", map[string]any{
+		"name": "材料组", "subject": "行测",
+		"questions": []map[string]any{
+			{"prompt": "1", "material": "同一材料", "material_id": "group-1", "options": []string{"A. 1", "B. 2"}, "answer": "A", "answer_index": 0},
+			{"prompt": "2", "material": "同一材料", "material_id": "group-1", "options": []string{"A. 1", "B. 2"}, "answer": "A", "answer_index": 0},
+		},
+	})
+	var imported struct {
+		ID int64 `json:"id"`
+	}
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("import status = %d", res.StatusCode)
+	}
+	decodeJSON(t, res, &imported)
+	res, err := client.Get(ts.URL + "/api/custom/practice?batch_id=" + jsonNumber(imported.ID) + "&count=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var practice struct {
+		Questions []any `json:"questions"`
+	}
+	decodeJSON(t, res, &practice)
+	if len(practice.Questions) != 2 {
+		t.Fatalf("practice length = %d, want 2 (whole material group)", len(practice.Questions))
 	}
 }
 

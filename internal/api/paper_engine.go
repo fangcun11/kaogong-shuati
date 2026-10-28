@@ -7,14 +7,17 @@ import (
 )
 
 type paperBuildOptions struct {
-	Subject    string
-	Modules    []moduleSpec
-	Sources    []paperSource
-	MainSource string
-	Count      int
-	DiffMin    int
-	DiffMax    int
-	Weak       map[string]bool
+	Subject       string
+	Modules       []moduleSpec
+	Sources       []paperSource
+	MainSource    string
+	Count         int
+	DiffMin       int
+	DiffMax       int
+	Weak          map[string]bool
+	Types         []int64
+	SourceWeights map[string]float64
+	SourceOff     map[string]bool
 }
 
 func (s *Server) buildPaperPicks(r *http.Request, opt paperBuildOptions) ([]paperPick, []string, error) {
@@ -26,7 +29,15 @@ func (s *Server) buildPaperPicks(r *http.Request, opt paperBuildOptions) ([]pape
 	seenG := map[string]bool{}
 	notices := make([]string, 0)
 	picks := make([]paperPick, 0, opt.Count)
-	activeSources := opt.Sources
+	activeSources := make([]paperSource, 0, len(opt.Sources))
+	for _, src := range opt.Sources {
+		if !opt.SourceOff[src.ID] {
+			activeSources = append(activeSources, src)
+		}
+	}
+	if len(activeSources) == 0 {
+		activeSources = append(activeSources, opt.Sources...)
+	}
 	if opt.MainSource != "" {
 		for _, src := range opt.Sources {
 			if src.ID == opt.MainSource {
@@ -68,30 +79,33 @@ func (s *Server) buildPaperPicks(r *http.Request, opt paperBuildOptions) ([]pape
 
 		if m.Name == "资料分析" {
 			groupCount := (quota + 4) / 5
-			gids := s.pickGroupIDs(r, opt.Subject, m.Name, "", nil, opt.DiffMin, opt.DiffMax, 3, 6, groupCount, seenG)
+			gids := s.pickGroupIDs(r, opt.Subject, m.Name, "", nil, opt.DiffMin, opt.DiffMax, opt.Types, 3, 6, groupCount, seenG)
 			for _, gid := range gids {
 				appendGroup(gid, 0)
 			}
 			if len(modulePicks) < quota {
 				notices = append(notices, "资料分析材料组不足，已用单题补齐")
-				for _, id := range s.pickSingleIDs(r, opt.Subject, m.Name, "", nil, 1, 9, quota-len(modulePicks), seenQ) {
+				for _, id := range s.pickSingleIDs(r, opt.Subject, m.Name, "", nil, 1, 9, opt.Types, quota-len(modulePicks), seenQ) {
 					appendSingle(id, 0)
 				}
 			}
 		} else {
+			subs := m.Subs
+			if len(subs) == 0 {
+				subs = []subSpec{{Name: "", Weight: 1}}
+			}
 			weights := make([]float64, len(activeSources))
-			for i := range weights {
+			for i, src := range activeSources {
 				weights[i] = 1
+				if w := opt.SourceWeights[src.ID]; w > 0 {
+					weights[i] = w
+				}
 			}
 			srcQuotas := allocateWeights(weights, quota)
 			for si, src := range activeSources {
 				srcQuota := srcQuotas[si]
 				if srcQuota <= 0 {
 					continue
-				}
-				subs := m.Subs
-				if len(subs) == 0 {
-					subs = []subSpec{{Name: "", Weight: 1}}
 				}
 				subWeights := make([]float64, len(subs))
 				for i, sub := range subs {
@@ -105,7 +119,7 @@ func (s *Server) buildPaperPicks(r *http.Request, opt paperBuildOptions) ([]pape
 					}
 					if m.Name == "判断推理" && sub.Name == "逻辑判断" && n >= 5 {
 						before := len(modulePicks)
-						gids := s.pickGroupIDs(r, opt.Subject, m.Name, sub.Name, &src, opt.DiffMin, opt.DiffMax, 4, 6, 1, seenG)
+						gids := s.pickGroupIDs(r, opt.Subject, m.Name, sub.Name, &src, opt.DiffMin, opt.DiffMax, opt.Types, 4, 6, 1, seenG)
 						for _, gid := range gids {
 							appendGroup(gid, subIdx)
 						}
@@ -114,7 +128,11 @@ func (s *Server) buildPaperPicks(r *http.Request, opt paperBuildOptions) ([]pape
 					if n <= 0 {
 						continue
 					}
-					for _, id := range s.pickSingleIDs(r, opt.Subject, m.Name, sub.Name, &src, opt.DiffMin, opt.DiffMax, n, seenQ) {
+					category := sub.Category
+					if category == "" {
+						category = m.Name
+					}
+					for _, id := range s.pickSingleIDs(r, opt.Subject, category, sub.Name, &src, opt.DiffMin, opt.DiffMax, opt.Types, n, seenQ) {
 						appendSingle(id, subIdx)
 					}
 				}
@@ -123,10 +141,6 @@ func (s *Server) buildPaperPicks(r *http.Request, opt paperBuildOptions) ([]pape
 			// split material groups (pickSingle excludes grouped questions).
 			if len(modulePicks) < quota {
 				need := quota - len(modulePicks)
-				subs := m.Subs
-				if len(subs) == 0 {
-					subs = []subSpec{{Name: "", Weight: 1}}
-				}
 				weights := make([]float64, len(subs))
 				for i, sub := range subs {
 					weights[i] = float64(sub.Weight)
@@ -136,8 +150,28 @@ func (s *Server) buildPaperPicks(r *http.Request, opt paperBuildOptions) ([]pape
 					if fillQuotas[subIdx] <= 0 {
 						continue
 					}
-					for _, id := range s.pickSingleIDs(r, opt.Subject, m.Name, sub.Name, nil, 1, 9, fillQuotas[subIdx], seenQ) {
+					category := sub.Category
+					if category == "" {
+						category = m.Name
+					}
+					for _, id := range s.pickSingleIDs(r, opt.Subject, category, sub.Name, nil, 1, 9, opt.Types, fillQuotas[subIdx], seenQ) {
 						appendSingle(id, subIdx)
+					}
+				}
+			}
+			// Last-resort fill: some B/C sub-topics share a category but have
+			// no rows for a specific sub name. Fill without the sub filter.
+			if len(modulePicks) < quota {
+				for _, sub := range subs {
+					if len(modulePicks) >= quota {
+						break
+					}
+					category := sub.Category
+					if category == "" {
+						category = m.Name
+					}
+					for _, id := range s.pickSingleIDs(r, opt.Subject, category, "", nil, 1, 9, opt.Types, quota-len(modulePicks), seenQ) {
+						appendSingle(id, 0)
 					}
 				}
 			}
@@ -268,16 +302,28 @@ func (s *Server) sourceWhere(src *paperSource) (string, []any) {
 	return "1=1", nil
 }
 
-func (s *Server) pickSingleIDs(r *http.Request, subject, module, sub string, src *paperSource, diffMin, diffMax, limit int, seen map[int64]bool) []int64 {
+func paperTypeWhere(types []int64) (string, []any) {
+	if len(types) == 0 {
+		return "1=1", nil
+	}
+	marks := strings.TrimSuffix(strings.Repeat("?,", len(types)), ",")
+	args := make([]any, 0, len(types))
+	for _, t := range types {
+		args = append(args, t)
+	}
+	return "q.type IN (" + marks + ")", args
+}
+
+func (s *Server) pickSingleIDs(r *http.Request, subject, category, sub string, src *paperSource, diffMin, diffMax int, types []int64, limit int, seen map[int64]bool) []int64 {
 	if limit <= 0 {
 		return nil
 	}
 	from, to := yearRange()
 	where := []string{
 		"qc.subject = ?", "qc.category = ?", "p.subjectName = ?",
-		"substr(p.name,1,4) BETWEEN ? AND ?", "q.type = 1",
+		"substr(p.name,1,4) BETWEEN ? AND ?",
 	}
-	args := []any{subject, module, subject, from, to}
+	args := []any{subject, category, subject, from, to}
 	if sub != "" {
 		where = append(where, "qc.sub = ?")
 		args = append(args, sub)
@@ -288,6 +334,9 @@ func (s *Server) pickSingleIDs(r *http.Request, subject, module, sub string, src
 		where = append(where, "q.difficulty BETWEEN ? AND ?")
 		args = append(args, diffMin, diffMax)
 	}
+	typeSQL, typeArgs := paperTypeWhere(types)
+	where = append(where, typeSQL)
+	args = append(args, typeArgs...)
 	srcSQL, srcArgs := s.sourceWhere(src)
 	where = append(where, srcSQL, "NOT EXISTS (SELECT 1 FROM q_material_map mm WHERE mm.question_id = qc.question_id AND mm.subject = qc.subject AND mm.material_id IS NOT NULL)")
 	args = append(args, srcArgs...)
@@ -311,14 +360,14 @@ func (s *Server) pickSingleIDs(r *http.Request, subject, module, sub string, src
 	return out
 }
 
-func (s *Server) pickGroupIDs(r *http.Request, subject, module, sub string, src *paperSource, diffMin, diffMax, minSize, maxSize, limit int, seen map[string]bool) []string {
+func (s *Server) pickGroupIDs(r *http.Request, subject, module, sub string, src *paperSource, diffMin, diffMax int, types []int64, minSize, maxSize, limit int, seen map[string]bool) []string {
 	if limit <= 0 {
 		return nil
 	}
 	from, to := yearRange()
 	where := []string{
 		"mm.subject = ?", "mm.material_id IS NOT NULL", "qc.category = ?",
-		"p.subjectName = ?", "substr(p.name,1,4) BETWEEN ? AND ?", "q.type = 1",
+		"p.subjectName = ?", "substr(p.name,1,4) BETWEEN ? AND ?",
 	}
 	args := []any{subject, module, subject, from, to}
 	if sub != "" {
@@ -337,6 +386,9 @@ func (s *Server) pickGroupIDs(r *http.Request, subject, module, sub string, src 
 		where = append(where, "q.difficulty BETWEEN ? AND ?")
 		args = append(args, diffMin, diffMax)
 	}
+	typeSQL, typeArgs := paperTypeWhere(types)
+	where = append(where, typeSQL)
+	args = append(args, typeArgs...)
 	srcSQL, srcArgs := s.sourceWhere(src)
 	where = append(where, srcSQL)
 	args = append(args, srcArgs...)
