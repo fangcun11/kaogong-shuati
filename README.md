@@ -50,6 +50,8 @@ Go + SQLite 后端 + 本地题库的考公刷题全栈应用：模块树刷题�
   npm --prefix web run build
   ```
 
+  当前已迁移登录、首页、科目/试卷、刷题、答题卡/背题/结果、统计、错题、收藏、笔记、自定义题库、文本导入、智能组卷和 AI 设置。详细交接见 [`AGENTS.md`](AGENTS.md) 和 [`docs/vue-migration.md`](docs/vue-migration.md)。
+
 - Android 打包：`app/` 为 Capacitor 工程，完整构建步骤见 [`BUILD_MANUAL.md`](BUILD_MANUAL.md)（含第三方构建者的 Debug 包路线）
 
 ## 目录结构
@@ -63,7 +65,8 @@ Go + SQLite 后端 + 本地题库的考公刷题全栈应用：模块树刷题�
 │   ├── store/                 # SQLite schema、题库导入、分卷重组
 │   └── config/                # 环境变量配置
 ├── data/                      # 运行时数据库（gitignore）
-├── public/                    # Web 前端（App 端共享逻辑；vendor/ 为第三方库分发包）
+├── web/                       # Vue3 + Vite + TypeScript 迁移版源码
+├── public/                    # 旧版 Web 前端 + 构建后的 public/vue/
 ├── app/                       # Capacitor Android 工程
 ├── ref-skills/                # 开源考公技能上游副本（仅参考，运行时从本地技能库加载）
 ├── docs/                      # 设计与技术文档

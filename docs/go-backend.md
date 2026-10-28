@@ -41,7 +41,7 @@ go run ./cmd/kaogong
 - 自定义题库：导入、批次、题目编辑、材料分组、练习、判分
 - AI：配置、测试、历史、解析、OCR、题目结构化、申论批改、材料读取
 - 技能库：列表、导入、删除、URL 拉取
-- Vue3 迁移版：`web/` 构建到 `public/vue/`，访问 `/vue/`；当前已完成登录、首页、科目分类和基础 AppShell
+- Vue3 迁移版：`web/` 构建到 `public/vue/`，访问 `/vue/`；已迁移登录、首页、科目/试卷、刷题、答题卡/背题/结果、统计、错题、收藏、笔记、自定义题库、文本导入、智能组卷和 AI 设置。详见 [`vue-migration.md`](vue-migration.md) 和 [`../AGENTS.md`](../AGENTS.md)。
 
 ## 账号与权限
 

@@ -47,7 +47,7 @@ const loading = ref(true)
 const error = ref('')
 const index = ref(0)
 const answers = reactive<Record<string, AnswerState>>({})
-const favoriteIds = ref(new Set<number>())
+const favoriteIds = ref(new Set<string>())
 const noteOpen = ref(false)
 const noteText = ref('')
 const noteSaved = ref(false)
@@ -71,7 +71,7 @@ const accuracy = computed(() => {
   const checked = Object.values(answers).filter((a) => !!a.check).length
   return checked ? Math.round((correctCount.value / checked) * 100) : 0
 })
-const isFavorite = computed(() => !!current.value && favoriteIds.value.has(Number(current.value.id ?? current.value.questionId)))
+const isFavorite = computed(() => !!current.value && favoriteIds.value.has(String(current.value.id ?? current.value.questionId)))
 
 function optionText(text: string): string {
   return String(text || '').replace(/^\s*[A-Ha-h][.、)]\s*/, '')
@@ -169,8 +169,8 @@ async function load() {
 
 async function loadFavorites() {
   try {
-    const data = await api<{ list: Array<{ questionId: number }> }>('/api/favorites?limit=200')
-    favoriteIds.value = new Set((data.list || []).map((x) => Number(x.questionId)))
+    const data = await api<{ list: Array<{ questionId: number | string }> }>('/api/favorites?limit=200')
+    favoriteIds.value = new Set((data.list || []).map((x) => String(x.questionId)))
   } catch {
     favoriteIds.value = new Set()
   }
@@ -273,7 +273,7 @@ function goPrev() {
 async function toggleFavorite() {
   const q = current.value
   if (!q) return
-  const id = Number(q.id ?? q.questionId)
+  const id = String(q.id ?? q.questionId)
   const wasFav = favoriteIds.value.has(id)
   try {
     await api('/api/favorites', {
