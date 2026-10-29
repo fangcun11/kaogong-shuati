@@ -81,6 +81,7 @@ web/src/
 ├── router/index.ts            hash 路由 + 登录守卫
 ├── components/Icon.vue        内联 SVG 图标
 ├── components/ScratchPad.vue  刷题页草稿纸（canvas 手写）
+├── components/ResultPanel.vue 练习结果页（正确率、题号回看、筛选、重做错题）
 ├── views/
 │   ├── LoginView.vue
 │   ├── HomeView.vue
@@ -190,6 +191,15 @@ POST /api/records { questionId, subject, chapter, type, selected, correct, costM
 - 颜色按纸面取深浅两套：纸面弹层和浅色主题用深色值（红 `#dc3d43`、蓝 `#2563eb`、绿 `#157f3c`），深色主题的半透明模式用浅色值（红 `#ff7b7b`、蓝 `#7aa7ff`、绿 `#5fd28a`），色点显示也走同一套
 - 模式类名用 `mode-sheet` / `mode-clear`，不要直接用 `sheet`，会撞上 `public/style.css` 里的旧版 `.sheet` 弹层样式
 - 打开时 `body` 加 `scratch-open` 锁滚动，关闭/卸载/Esc 都恢复；一次练习共用一张纸：换题保留，`load()` 新练习和「再来一组」时通过 `defineExpose({ reset })` 清空；不落库，离开练习即丢弃
+
+### 结果页
+
+`components/ResultPanel.vue`，练习完成后替换题目卡：顶部是正确率圆环和 5 项统计，中间按「全部 / 错题 / 未答」筛题号，题号按对（绿）/错（红）/未答（虚线）着色。结果页只依赖 `answers` 里的判分结果，不再请求后端。
+
+- 点题号进入回看：`PracticeView` 设 `reviewing=true`、`finished=false`，题目卡显示原选项、正确答案和解析，顶部出现「← 返回结果」条；最后一题的按钮变成「返回结果」而不是「完成练习」
+- 「重做本次错题」在内存里把 `questions` 过滤成 `check.ok === false` 的题，清空 `answers` 后从第 1 题重新开始，并设 `redoMode=true`；重练完成的结果页标题是「错题重练完成」，按钮变成「再练一遍」（重置答案、保留这组错题），直到 `load()` 重新取题才退出
+- 「去错题本」跳 `/vue/#/wrong`；结果页宽度上限 560px，桌面题号格子固定 56px，移动端 6 列铺满
+- 题目卡顶部的进度条和 q-meta 在 `finished` 时隐藏，避免结果页还显示第 1 题的标签
 
 ### 首页
 

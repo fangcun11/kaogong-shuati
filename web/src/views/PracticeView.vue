@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, post } from '../api/client'
 import Icon from '../components/Icon.vue'
+import ResultPanel from '../components/ResultPanel.vue'
 import ScratchPad from '../components/ScratchPad.vue'
 
 interface Question {
@@ -36,6 +37,12 @@ interface AnswerState {
   costMs: number
 }
 
+interface ResultItem {
+  index: number
+  number: number
+  state: 'correct' | 'wrong' | 'todo' | 'answered'
+}
+
 const route = useRoute()
 const router = useRouter()
 const subject = computed(() => String(route.params.subject || ''))
@@ -55,6 +62,8 @@ const noteSaved = ref(false)
 const saving = ref(false)
 const startedAt = ref(Date.now())
 const finished = ref(false)
+const reviewing = ref(false)
+const redoMode = ref(false)
 const showCard = ref(false)
 const reciteMode = ref(false)
 const showScratch = ref(false)
@@ -74,6 +83,9 @@ const accuracy = computed(() => {
   const checked = Object.values(answers).filter((a) => !!a.check).length
   return checked ? Math.round((correctCount.value / checked) * 100) : 0
 })
+const resultItems = computed<ResultItem[]>(() =>
+  questions.value.map((q, i) => ({ index: i, number: i + 1, state: resultState(q) })),
+)
 const isFavorite = computed(() => !!current.value && favoriteIds.value.has(String(current.value.id ?? current.value.questionId)))
 
 function optionText(text: string): string {
@@ -110,6 +122,14 @@ function answerText(q: Question): string {
   const indices = correctIndices(q)
   if (indices.length) return indices.map((i) => optionKey(i)).join('、')
   return q.answer || '暂无答案'
+}
+
+function resultState(q: Question): ResultItem['state'] {
+  const state = answers[String(q.id ?? q.questionId)]
+  if (!state?.check) return 'todo'
+  if (state.check.ok === true) return 'correct'
+  if (state.check.ok === false) return 'wrong'
+  return 'answered'
 }
 
 function questionState(i: number): string {
@@ -157,6 +177,8 @@ async function load() {
     }
     index.value = 0
     finished.value = false
+    reviewing.value = false
+    redoMode.value = false
     noteOpen.value = false
     showScratch.value = false
     scratchRef.value?.reset()
@@ -262,6 +284,7 @@ function goNext() {
     loadNote()
   } else {
     showCard.value = false
+    reviewing.value = false
     finished.value = true
   }
 }
@@ -273,6 +296,39 @@ function goPrev() {
     noteOpen.value = false
     loadNote()
   }
+}
+
+function review(i: number) {
+  index.value = i
+  reviewing.value = true
+  finished.value = false
+  showCard.value = false
+  noteOpen.value = false
+  loadNote()
+}
+
+function backToResult() {
+  reviewing.value = false
+  showCard.value = false
+  noteOpen.value = false
+  finished.value = true
+}
+
+function redoWrong() {
+  const wrong = questions.value.filter((q) => resultState(q) === 'wrong')
+  if (!wrong.length) return
+  questions.value = wrong
+  for (const key of Object.keys(answers)) delete answers[key]
+  redoMode.value = true
+  reviewing.value = false
+  finished.value = false
+  index.value = 0
+  showCard.value = false
+  noteOpen.value = false
+  showScratch.value = false
+  scratchRef.value?.reset()
+  startedAt.value = Date.now()
+  loadNote()
 }
 
 async function toggleFavorite() {
@@ -330,6 +386,7 @@ async function deleteNote() {
 
 function restart() {
   finished.value = false
+  reviewing.value = false
   index.value = 0
   showCard.value = false
   showScratch.value = false
@@ -352,8 +409,8 @@ onMounted(load)
   <div v-else-if="!questions.length" class="empty">该分类暂无题目</div>
 
   <template v-else>
-    <div class="q-progress-bar"><div class="fill" :style="{ width: `${progress}%` }" /></div>
-    <div class="q-meta">
+    <div v-if="!finished" class="q-progress-bar"><div class="fill" :style="{ width: `${progress}%` }" /></div>
+    <div v-if="!finished" class="q-meta">
       <span class="tag tag-chapter">{{ current?.module || current?.chapter || category || subject }}</span>
       <span class="tag tag-type">{{ isMulti ? '多选' : '单选' }}</span>
       <span class="tag tag-difficulty">难度 {{ current?.difficulty || '—' }}</span>
@@ -366,6 +423,13 @@ onMounted(load)
         </button>
       </span>
       <span class="q-progress-text">{{ index + 1 }} / {{ questions.length }} · 已答 {{ answeredCount }}</span>
+    </div>
+
+    <div v-if="reviewing" class="review-bar">
+      <button class="review-back" @click="backToResult">← 返回结果</button>
+      <span class="review-pos">回看第 {{ index + 1 }} 题</span>
+      <span v-if="currentAnswer?.check?.ok === false" class="review-tag no">错</span>
+      <span v-else-if="currentAnswer?.check?.ok === true" class="review-tag ok">对</span>
     </div>
 
     <article v-if="!finished" class="q-card">
@@ -416,23 +480,25 @@ onMounted(load)
         <button v-if="!submitted && !reciteMode" class="btn btn-primary" :disabled="!currentAnswer?.selected.length || saving" @click="submitAnswer">
           {{ saving ? '判分中…' : '提交答案' }}
         </button>
-        <button v-else class="btn btn-primary" @click="goNext">{{ index === questions.length - 1 ? '完成练习' : '下一题' }}</button>
+        <button v-else class="btn btn-primary" @click="goNext">{{ index === questions.length - 1 ? (reviewing ? '返回结果' : '完成练习') : '下一题' }}</button>
       </div>
     </article>
 
-    <section v-else class="card vue-finished">
-      <div class="vue-finished-icon"><Icon name="trophy" :size="34" /></div>
-      <h2>练习完成</h2>
-      <div class="vue-finished-stats">
-        <div><b>{{ questions.length }}</b><span>总题数</span></div>
-        <div><b>{{ answeredCount }}</b><span>已作答</span></div>
-        <div><b>{{ correctCount }}</b><span>正确</span></div>
-        <div><b>{{ wrongCount }}</b><span>错误</span></div>
-        <div><b>{{ accuracy }}%</b><span>正确率</span></div>
-      </div>
-      <button class="btn btn-primary btn-block" @click="restart">再来一组</button>
-      <button class="btn btn-ghost btn-block" style="margin-top: 8px" @click="router.push({ name: 'home' })">返回首页</button>
-    </section>
+    <ResultPanel
+      v-else
+      :total="questions.length"
+      :answered="answeredCount"
+      :correct="correctCount"
+      :wrong="wrongCount"
+      :accuracy="accuracy"
+      :items="resultItems"
+      :redo-mode="redoMode"
+      @review="review"
+      @redo="redoWrong"
+      @restart="restart"
+      @wrong-book="router.push({ name: 'wrong' })"
+      @home="router.push({ name: 'home' })"
+    />
 
     <div v-if="showCard" class="vue-sheet-overlay" @click.self="showCard = false">
       <div class="vue-sheet">
@@ -476,11 +542,36 @@ onMounted(load)
 .vue-note-panel { margin-top: 16px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--card-2); }
 .vue-note-panel textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--border-strong); border-radius: 10px; padding: 10px; resize: vertical; background: var(--card); color: var(--text); font: inherit; }
 .vue-inline-error { margin-top: 12px; color: var(--red); font-size: 13px; }
-.vue-finished { text-align: center; padding: 30px 20px; margin-top: 18px; }
-.vue-finished-icon { width: 58px; height: 58px; border-radius: 18px; display: grid; place-items: center; margin: 0 auto 12px; background: var(--amber-soft); color: var(--amber); }
-.vue-finished-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 18px 0 22px; }
-.vue-finished-stats b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
-.vue-finished-stats span { display: block; margin-top: 2px; color: var(--text-3); font-size: 10px; }
+.review-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-2);
+  font-size: 12.5px;
+}
+.review-back {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--primary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.review-pos { color: var(--text-2); }
+.review-tag {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.review-tag.ok { color: var(--green); background: var(--green-soft); }
+.review-tag.no { color: var(--red); background: var(--red-soft); }
 .q-card-btn.on { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
 .vue-sheet-overlay { position: fixed; inset: 0; z-index: 500; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.38); }
 .vue-sheet { width: min(560px, 100%); max-height: 80vh; overflow: auto; border-radius: 20px 20px 0 0; background: var(--card); padding: 18px 18px calc(18px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 30px rgba(0,0,0,.18); }
