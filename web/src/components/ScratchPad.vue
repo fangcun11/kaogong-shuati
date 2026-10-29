@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 type Tool = 'pen' | 'eraser'
 type Mode = 'sheet' | 'clear'
+type ColorId = 'ink' | 'red' | 'blue' | 'green'
 interface Stroke {
   tool: Tool
+  color: ColorId
   width: number
   points: Array<[number, number]>
 }
@@ -12,16 +14,23 @@ interface Stroke {
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 
-const INK_LIGHT = '#1f2a3c'
-const INK_DARK = '#e9eef8'
+const PALETTE: Array<{ id: ColorId; name: string; light: string; dark: string }> = [
+  { id: 'ink', name: '墨黑', light: '#1f2a3c', dark: '#e9eef8' },
+  { id: 'red', name: '红色', light: '#dc3d43', dark: '#ff7b7b' },
+  { id: 'blue', name: '蓝色', light: '#2563eb', dark: '#7aa7ff' },
+  { id: 'green', name: '绿色', light: '#157f3c', dark: '#5fd28a' },
+]
 const PEN_WIDTH = 2.4
 const ERASER_WIDTH = 18
 const MODE_KEY = 'kg_scratch_mode'
+const COLOR_KEY = 'kg_scratch_color'
 
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 const wrapEl = ref<HTMLElement | null>(null)
 const tool = ref<Tool>('pen')
 const mode = ref<Mode>(readMode())
+const color = ref<ColorId>(readColor())
+const paletteOpen = ref(false)
 const strokes = ref<Stroke[]>([])
 let drawing: Stroke | null = null
 let observer: ResizeObserver | null = null
@@ -34,7 +43,30 @@ function readMode(): Mode {
   }
 }
 
+function readColor(): ColorId {
+  try {
+    const saved = localStorage.getItem(COLOR_KEY) as ColorId | null
+    return PALETTE.some((c) => c.id === saved) ? (saved as ColorId) : 'ink'
+  } catch {
+    return 'ink'
+  }
+}
+
+function pickColor(id: ColorId) {
+  color.value = id
+  paletteOpen.value = false
+  try {
+    localStorage.setItem(COLOR_KEY, id)
+  } catch {
+    /* optional */
+  }
+}
+
+const activeColor = computed(() => PALETTE.find((c) => c.id === color.value) || PALETTE[0])
+const swatch = computed(() => inkOf(activeColor.value.id))
+
 function toggleMode() {
+  paletteOpen.value = false
   mode.value = mode.value === 'sheet' ? 'clear' : 'sheet'
   try {
     localStorage.setItem(MODE_KEY, mode.value)
@@ -57,17 +89,18 @@ function isDark() {
   return document.documentElement.getAttribute('data-theme') === 'dark'
 }
 
-function inkColor() {
+function inkOf(id: ColorId) {
   // 纸面弹层始终是浅色纸；只有深色主题的半透明模式才用浅色笔迹
-  return isDark() && mode.value === 'clear' ? INK_DARK : INK_LIGHT
+  const c = PALETTE.find((x) => x.id === id) || PALETTE[0]
+  return isDark() && mode.value === 'clear' ? c.dark : c.light
 }
 
 function paint(ctx: CanvasRenderingContext2D, s: Stroke) {
   const pts = s.points
   if (!pts.length) return
   ctx.globalCompositeOperation = s.tool === 'eraser' ? 'destination-out' : 'source-over'
-  ctx.strokeStyle = inkColor()
-  ctx.fillStyle = inkColor()
+  ctx.strokeStyle = inkOf(s.color)
+  ctx.fillStyle = inkOf(s.color)
   ctx.lineWidth = s.width
   if (pts.length === 1) {
     ctx.beginPath()
@@ -128,6 +161,7 @@ function onDown(e: PointerEvent) {
   }
   drawing = {
     tool: tool.value,
+    color: color.value,
     width: tool.value === 'eraser' ? ERASER_WIDTH : PEN_WIDTH,
     points: [pointFrom(e)],
   }
@@ -147,7 +181,7 @@ function onMove(e: PointerEvent) {
   const ctx = ctxOf()
   if (!ctx) return
   ctx.globalCompositeOperation = drawing.tool === 'eraser' ? 'destination-out' : 'source-over'
-  ctx.strokeStyle = inkColor()
+  ctx.strokeStyle = inkOf(drawing.color)
   ctx.lineWidth = drawing.width
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
@@ -168,12 +202,14 @@ function onUp(e: PointerEvent) {
 }
 
 function undo() {
+  paletteOpen.value = false
   if (!strokes.value.length) return
   strokes.value.pop()
   drawAll()
 }
 
 function clearAll() {
+  paletteOpen.value = false
   if (!strokes.value.length) return
   strokes.value = []
   drawAll()
@@ -186,6 +222,7 @@ function reset() {
 }
 
 function close() {
+  paletteOpen.value = false
   emit('close')
 }
 
@@ -202,6 +239,7 @@ watch(
       requestAnimationFrame(resize)
     } else {
       document.body.classList.remove('scratch-open')
+      paletteOpen.value = false
     }
   },
 )
@@ -244,12 +282,36 @@ defineExpose({ reset })
       </header>
 
       <div class="scratch-tools">
-        <button class="tool-btn" :class="{ on: tool === 'pen' }" @click="tool = 'pen'">笔</button>
-        <button class="tool-btn" :class="{ on: tool === 'eraser' }" @click="tool = 'eraser'">橡皮</button>
+        <button class="tool-btn" :class="{ on: tool === 'pen' }" @click="tool = 'pen'; paletteOpen = false">笔</button>
+        <button class="tool-btn" :class="{ on: tool === 'eraser' }" @click="tool = 'eraser'; paletteOpen = false">橡皮</button>
         <span class="tool-gap" />
+        <button
+          class="tool-btn color-btn"
+          :class="{ on: paletteOpen }"
+          title="笔迹颜色"
+          aria-label="笔迹颜色"
+          :aria-expanded="paletteOpen"
+          @click="paletteOpen = !paletteOpen"
+        >
+          <span class="swatch-dot" :style="{ background: swatch }" />
+        </button>
         <button class="tool-btn" :disabled="!strokes.length" @click="undo">撤销</button>
         <button class="tool-btn" :disabled="!strokes.length" @click="clearAll">清空</button>
+        <div v-if="paletteOpen" class="color-pop" role="menu" aria-label="笔迹颜色">
+          <button
+            v-for="c in PALETTE"
+            :key="c.id"
+            class="color-swatch-btn"
+            :class="{ on: color === c.id }"
+            :style="{ background: inkOf(c.id) }"
+            :title="c.name"
+            :aria-label="c.name"
+            :aria-pressed="color === c.id"
+            @click="pickColor(c.id)"
+          />
+        </div>
       </div>
+      <div v-if="paletteOpen" class="color-mask" @click="paletteOpen = false" />
 
       <div ref="wrapEl" class="scratch-canvas-wrap">
         <canvas
@@ -290,6 +352,8 @@ defineExpose({ reset })
   box-shadow: 0 -10px 40px rgba(0, 0, 0, .22);
 }
 .scratch-head {
+  position: relative;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -342,6 +406,8 @@ defineExpose({ reset })
 }
 .scratch-close:hover { color: var(--text); }
 .scratch-tools {
+  position: relative;
+  z-index: 3;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -368,6 +434,50 @@ defineExpose({ reset })
 }
 .tool-btn:disabled { opacity: .4; cursor: default; }
 .tool-gap { flex: 1; }
+.color-btn {
+  min-width: 44px;
+  padding: 0 10px;
+}
+.swatch-dot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, .18);
+  vertical-align: middle;
+}
+.color-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  z-index: 5;
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, .18);
+  transform: translateX(-50%);
+}
+.color-swatch-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, .14);
+  cursor: pointer;
+}
+.color-swatch-btn.on {
+  border-color: var(--card);
+  box-shadow: 0 0 0 2px var(--primary);
+}
+.color-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+}
 .scratch-canvas-wrap {
   position: relative;
   flex: 1;
@@ -434,6 +544,10 @@ defineExpose({ reset })
   background: var(--card);
   box-shadow: 0 6px 22px rgba(15, 23, 42, .14);
   transform: translateX(-50%);
+}
+.scratch-panel.mode-clear .color-pop {
+  top: auto;
+  bottom: calc(100% + 8px);
 }
 .scratch-panel.mode-clear .scratch-canvas-wrap {
   border: 0;

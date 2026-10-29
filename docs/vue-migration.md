@@ -185,7 +185,9 @@ POST /api/records { questionId, subject, chapter, type, selected, correct, costM
 - 纸面（默认）：底部升起的画布面板（`88vh`，桌面最宽 760px），深色主题下也保持纸色 `#fbfaf6` / 深色笔迹，适合安静列竖式
 - 半透明：整页覆盖、不遮页面内容，抬头和工具栏浮在画布上下；浅色主题画布透明、直接用深色笔迹，深色主题垫一层 `rgba(10,15,24,.58)` 深色玻璃并改用浅色笔迹（`#e9eef8`），两边都看得清
 - 两种模式共用同一份笔画，切换后按新画布尺寸重绘；橡皮用 `destination-out` 擦成透明，所以半透明模式下擦掉的笔迹会重新露出题目
-- 笔 / 橡皮 / 撤销 / 清空；笔画按 `{tool, width, points}` 存在内存里，窗口尺寸变化时按 devicePixelRatio 重绘
+- 笔 / 橡皮 / 撤销 / 清空；笔画按 `{tool, color, width, points}` 存在内存里，窗口尺寸变化时按 devicePixelRatio 重绘
+- 笔色预置墨黑 / 红 / 蓝 / 绿四档，工具栏按钮只显示当前色点，点开是一排色板；选择记在 `localStorage['kg_scratch_color']`，每条笔画记录当时的颜色，换色只影响之后画的线
+- 颜色按纸面取深浅两套：纸面弹层和浅色主题用深色值（红 `#dc3d43`、蓝 `#2563eb`、绿 `#157f3c`），深色主题的半透明模式用浅色值（红 `#ff7b7b`、蓝 `#7aa7ff`、绿 `#5fd28a`），色点显示也走同一套
 - 模式类名用 `mode-sheet` / `mode-clear`，不要直接用 `sheet`，会撞上 `public/style.css` 里的旧版 `.sheet` 弹层样式
 - 打开时 `body` 加 `scratch-open` 锁滚动，关闭/卸载/Esc 都恢复；一次练习共用一张纸：换题保留，`load()` 新练习和「再来一组」时通过 `defineExpose({ reset })` 清空；不落库，离开练习即丢弃
 
