@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -27,6 +28,9 @@ func main() {
 	dbPath := flag.String("db", cfg.DBPath, "SQLite database path")
 	webDir := flag.String("web", cfg.WebDir, "static web directory")
 	importContent := flag.Bool("import", cfg.ImportContent, "import tiku.db / materials.db / tiku-index.db")
+	mcpTokenName := flag.String("mcp-token", "", "issue a read-only MCP token with this label, print it, and exit")
+	mcpTokenDays := flag.Int("mcp-token-days", 180, "lifetime of the MCP token in days")
+	mcpTokenRevoke := flag.Int64("mcp-token-revoke", 0, "revoke the MCP token with this id and exit")
 	flag.Parse()
 
 	cfg.Addr = *addr
@@ -70,6 +74,33 @@ func main() {
 	}
 
 	authManager := auth.NewManager(db, cfg.SessionTTL)
+	if *mcpTokenRevoke > 0 {
+		ownerID, err := adminUserID(ctx, db, cfg.AdminUser)
+		if err != nil {
+			log.Fatalf("find user for MCP token: %v", err)
+		}
+		if err := authManager.RevokeMCPToken(ctx, ownerID, *mcpTokenRevoke); err != nil {
+			log.Fatalf("revoke MCP token: %v", err)
+		}
+		fmt.Printf("MCP token %d revoked (if it belonged to %q)\n", *mcpTokenRevoke, cfg.AdminUser)
+		return
+	}
+	if *mcpTokenName != "" {
+		ownerID, err := adminUserID(ctx, db, cfg.AdminUser)
+		if err != nil {
+			log.Fatalf("find user for MCP token: %v", err)
+		}
+		token, info, err := authManager.CreateMCPToken(ctx, ownerID, *mcpTokenName, "read",
+			time.Duration(*mcpTokenDays)*24*time.Hour)
+		if err != nil {
+			log.Fatalf("issue MCP token: %v", err)
+		}
+		fmt.Printf("MCP token #%d %q (scope %s), expires %s\n\n  %s\n\n"+
+			"Start the server with KAOGONG_MCP=1 and send it as: Authorization: Bearer <token>\n"+
+			"Only the hash is stored; this token will not be shown again.\n",
+			info.ID, info.Name, info.Scope, info.ExpiresAt.Format("2006-01-02"), token)
+		return
+	}
 	apiServer := api.New(cfg, db, authManager)
 	httpServer := &http.Server{
 		Addr:              cfg.Addr,
@@ -118,6 +149,19 @@ func ensureSecret(cfg *config.Config) error {
 	}
 	cfg.Secret = secret
 	return nil
+}
+
+func adminUserID(ctx context.Context, db *sql.DB, preferred string) (int64, error) {
+	var id int64
+	err := db.QueryRowContext(ctx, `SELECT id FROM users WHERE username = ?`, preferred).Scan(&id)
+	if err == nil {
+		return id, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	err = db.QueryRowContext(ctx, `SELECT id FROM users WHERE role = 'admin' AND status = 1 ORDER BY id LIMIT 1`).Scan(&id)
+	return id, err
 }
 
 func ensureAdmin(ctx context.Context, db *sql.DB, cfg config.Config) error {

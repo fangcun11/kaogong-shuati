@@ -44,6 +44,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /api/health", s.health)
+	mux.Handle("/mcp", s.mcpRoute())
 	mux.HandleFunc("POST /api/auth/login", s.login)
 	mux.Handle("POST /api/auth/logout", s.requireAuth(http.HandlerFunc(s.logout)))
 	mux.Handle("GET /api/auth/me", s.requireAuth(http.HandlerFunc(s.me)))

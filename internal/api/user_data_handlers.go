@@ -196,6 +196,11 @@ func (s *Server) wrongList(w http.ResponseWriter, r *http.Request) {
 		filterArgs = append(filterArgs, group)
 		queryArgs = append(queryArgs, group)
 	}
+	if subject := strings.TrimSpace(r.URL.Query().Get("subject")); subject != "" {
+		cond += " AND r.subject = ?"
+		filterArgs = append(filterArgs, subject)
+		queryArgs = append(queryArgs, subject)
+	}
 	queryArgs = append(queryArgs, u.ID, limit, offset)
 	total := countRows(r, s, `
 		SELECT COUNT(DISTINCT question_id) FROM practice_records r
@@ -296,6 +301,10 @@ func (s *Server) favorites(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Has("group") {
 		cond = " AND f.group_key = ?"
 		args = append(args, r.URL.Query().Get("group"))
+	}
+	if subject := strings.TrimSpace(r.URL.Query().Get("subject")); subject != "" {
+		cond += " AND f.subject = ?"
+		args = append(args, subject)
 	}
 	args = append(args, limit, offset)
 	rows, err := s.db.QueryContext(r.Context(), `

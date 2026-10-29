@@ -17,6 +17,11 @@ import (
 
 func newTestServer(t *testing.T) (*httptest.Server, *Server) {
 	t.Helper()
+	return newTestServerConfig(t, nil)
+}
+
+func newTestServerConfig(t *testing.T, mutate func(*config.Config)) (*httptest.Server, *Server) {
+	t.Helper()
 	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -30,6 +35,9 @@ func newTestServer(t *testing.T) (*httptest.Server, *Server) {
 		t.Fatal(err)
 	}
 	cfg := config.Config{WebDir: "../../public", SessionTTL: time.Hour}
+	if mutate != nil {
+		mutate(&cfg)
+	}
 	s := New(cfg, db, auth.NewManager(db, cfg.SessionTTL))
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(ts.Close)

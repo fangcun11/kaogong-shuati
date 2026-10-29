@@ -88,6 +88,21 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
 
+-- MCP access tokens are bearer credentials for external agents. Only the
+-- SHA-256 hash is stored; the plaintext token is printed once at creation.
+CREATE TABLE IF NOT EXISTS mcp_tokens (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name         TEXT NOT NULL,
+  token_hash   TEXT NOT NULL UNIQUE,
+  scope        TEXT NOT NULL DEFAULT 'read',
+  created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  expires_at   INTEGER NOT NULL,
+  last_used_at TEXT,
+  revoked_at   INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_mcp_tokens_user ON mcp_tokens(user_id);
+
 CREATE TABLE IF NOT EXISTS practice_records (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

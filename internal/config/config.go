@@ -19,6 +19,7 @@ type Config struct {
 	AdminPassword string
 	Secret        string
 	ImportContent bool
+	MCPEnabled    bool
 }
 
 func Load() Config {
@@ -35,6 +36,7 @@ func Load() Config {
 		AdminPassword: os.Getenv("KAOGONG_ADMIN_PASSWORD"),
 		Secret:        os.Getenv("KAOGONG_SECRET"),
 		ImportContent: envBool("KAOGONG_IMPORT", false),
+		MCPEnabled:    envBool("KAOGONG_MCP", false),
 	}
 }
 

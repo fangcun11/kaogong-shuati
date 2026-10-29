@@ -20,6 +20,7 @@ Go + SQLite 后端 + 本地题库的考公刷题全栈应用：模块树刷题�
 - 题型覆盖：单选/多选/判断/不定项 + 申论/综应主观题；答题卡质感 UI（Ocean Depths 主题、深浅双模式、移动端优先 + 桌面适配）
 - 做题记录服务端落库（`data/kaogong.db`，手机/电脑跨设备同步）：错题本、收藏、单题重做、统计概览、近 7 天趋势
 - 自定义题库：导入自有题目（文本粘贴/PDF/Excel/图片 OCR），AI 辅助拆分为结构化题目，支持按科目管理
+- MCP 只读接口（可选）：让 Qoder / Claude Desktop / Cursor 等外部 agent 查询学习数据、薄弱章节、组练习题；Bearer token 按用户隔离
 
 **AI 能力**（四个智能体，OpenAI 兼容协议，各自独立 base_url / api_key / model，改完即生效，提示词带版本历史可回滚）
 
@@ -43,6 +44,14 @@ Go + SQLite 后端 + 本地题库的考公刷题全栈应用：模块树刷题�
 
 - 首次启动会自动创建 `data/kaogong.db`，重组并导入题库/材料，创建第一个管理员；完整说明见 [`docs/go-backend.md`](docs/go-backend.md)
 - AI 功能需在「AI 设置」页配置 base_url + api_key（DeepSeek/通义/GLM/OpenAI/本地 Ollama 等 OpenAI 兼容网关均可）；API key 加密存储，普通用户不能修改全局配置
+- MCP 默认关闭。签发 token 后以 `KAOGONG_MCP=1` 启动，客户端连 `http://127.0.0.1:8080/mcp`：
+
+  ```powershell
+  go run ./cmd/kaogong -mcp-token laptop   # 只显示一次
+  $env:KAOGONG_MCP = '1'
+  ```
+
+  工具、客户端配置与安全说明见 [`docs/mcp.md`](docs/mcp.md)
 - **Vue3 迁移版**：`web/` 为 Vue3 + Vite + TypeScript 工程，构建后访问 `/vue/`；旧版 `/` 仍保留作为回退：
 
   ```powershell

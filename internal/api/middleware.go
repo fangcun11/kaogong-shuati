@@ -97,6 +97,13 @@ func (s *Server) requestLogger(next http.Handler) http.Handler {
 // requests. A CSRF token can be layered on top later without changing routes.
 func (s *Server) csrfOriginCheck(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Bearer credentials are not ambient like cookies, so cross-origin
+		// requests cannot ride on them; MCP clients also post from non-browser
+		// runtimes with no Origin header.
+		if r.Header.Get("Authorization") != "" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		switch r.Method {
 		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
 			origin := r.Header.Get("Origin")

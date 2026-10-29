@@ -42,8 +42,9 @@ Vue 版访问 `http://127.0.0.1:8081/vue/`；旧版访问 `http://127.0.0.1:8081
 cmd/kaogong/                 Go 入口：配置、DB、HTTP server
 internal/
   api/                       路由、中间件、题库/组卷/记录/自定义/AI handler
-  auth/                      Argon2id 密码、session
+  auth/                      Argon2id 密码、session、MCP token
   ai/                        AI agent、加密 key、OpenAI 兼容客户端、技能加载
+  mcp/                       MCP Streamable HTTP 传输层（纯标准库，无 SDK 依赖）
   store/                     schema.sql、legacy DB 导入、tiku 分卷重组
   config/                    环境变量
 web/                         Vue3 + Vite + TypeScript 源码
@@ -69,6 +70,7 @@ ref-skills/                  开源技能参考副本（运行时技能库在 DB
 - 自定义题库导入、批次、练习、图片 HTML
 - AI 配置、加密 key、测试、历史、解析、OCR、结构化、申论批改、模型代理
 - 技能库
+- MCP 只读接口（`/mcp`，`KAOGONG_MCP=1` 开启）：`study_overview` / `list_questions` / `get_question` / `weakness_report` / `compose_practice`，Bearer token 按用户隔离，详见 [`docs/mcp.md`](docs/mcp.md)
 - Go 静态服务支持 `/vue/` 目录 index
 
 详细接口参考 [`docs/go-backend.md`](docs/go-backend.md)。
@@ -207,6 +209,11 @@ git push origin main
 | `internal/api/paper_engine.go` | 组卷抽题引擎 |
 | `internal/api/custom_handlers.go` | 自定义题库 |
 | `internal/api/ai_handlers.go` | AI API |
+| `internal/api/mcp_tools.go` | MCP 五个只读工具（复用现有 handler） |
+| `internal/api/mcp_auth.go` | MCP Bearer 校验与用户上下文 |
+| `internal/mcp/server.go` | MCP JSON-RPC / Streamable HTTP 传输层 |
+| `internal/auth/token.go` | MCP token 签发/校验/吊销 |
+| `cmd/kaogong/main.go` | `-mcp-token` / `-mcp-token-revoke` |
 | `web/src/views/PracticeView.vue` | 刷题主流程 |
 | `web/src/views/CustomImportView.vue` | 自定义导入 |
 | `web/src/api/client.ts` | 前端请求封装 |
@@ -218,6 +225,7 @@ git push origin main
 - 自定义题详情已接入 `GET /api/question?id=custom-*`；接口按 batch 归属校验，跨用户返回 404，材料组成员会借用组内持有者的材料。列表摘要（错题/收藏/笔记）依赖 `customQuestionSummary`，改动列表查询时不要退回只 JOIN `questions`。
 - 自定义导入已覆盖 TXT/MD/JSON/Excel（`.xlsx/.xls`）/Word（`.docx`）/PDF（文本层 + 扫描页 OCR），多文件一次导入；PDF 图表题截图裁剪、旧 `.doc` 格式仍未迁移。静态服务必须给 `.mjs` 正确的 `text/javascript` MIME，否则 pdf.js ES module 加载失败（见 `internal/api/static.go` 与 `static_test.go`）。
 - AI 真实模型调用、API key 保存回读、错误分支未做真实网关回归。
+- MCP 目前只读，没有 SSE/断线续传、写工具和频率限制；工具直接调用现有 handler（`internal/api/mcp_tools.go`），不要复制一套 SQL，否则组卷裁剪、材料补全和归属校验会漂。
 - `PracticeView` 的收藏 ID 已按 string 处理，避免自定义 ID 被 `Number()` 变成 NaN；后续改这里不要退回 number。
 - `SmartPaperView` 的弱项加权请求字段是简化版，需对照后端 `paper_handlers.go` 校验。
 - Vue 使用 hash 路由，外部链接需要带 `#/`；不要改成 history 路由，除非同时给 Go 加 `/vue/*` fallback。
