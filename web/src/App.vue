@@ -60,7 +60,7 @@ onUnmounted(() => window.removeEventListener('kg:unauthorized', onUnauthorized))
       </div>
     </header>
 
-    <main id="view" class="vue-view" :class="{ 'view-home': route.name === 'home' }">
+    <main id="view" class="vue-view" :class="{ 'view-home': route.name === 'home', 'view-stats': route.name === 'stats' }">
       <RouterView />
     </main>
 
@@ -115,6 +115,11 @@ onUnmounted(() => window.removeEventListener('kg:unauthorized', onUnauthorized))
   #bottom-nav { display: none; }
   #view { padding-bottom: 40px; }
   #view.view-home {
+    max-width: 1040px;
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+  #view.view-stats {
     max-width: 1040px;
     padding-left: 32px;
     padding-right: 32px;

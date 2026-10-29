@@ -87,7 +87,7 @@ ref-skills/                  开源技能参考副本（运行时技能库在 DB
 | `/vue/#/source/:subject/:category` | 试卷列表 | 可用 |
 | `/vue/#/practice/:subject/:category?` | 普通/试卷/组卷/自定义刷题 | 可用 |
 | `/vue/#/papers` | 智能组卷配置、生成后进入答题 | 可用 |
-| `/vue/#/stats` | 学习统计 | 可用（新库无记录时为空态） |
+| `/vue/#/stats` | 学习足迹：GitHub 式一年格子墙、选中日科目明细、科目表现与薄弱章节 | 可用（新库无记录时为空态） |
 | `/vue/#/wrong` | 错题本 | 可用 |
 | `/vue/#/favorites` | 收藏列表、取消收藏 | 可用 |
 | `/vue/#/notes` | 笔记列表、删除 | 可用 |

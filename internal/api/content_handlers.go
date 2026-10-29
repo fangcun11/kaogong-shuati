@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -182,6 +183,186 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 		dailyRows.Close()
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+type activitySubject struct {
+	Name   string `json:"name"`
+	Count  int64  `json:"c"`
+	OK     int64  `json:"ok"`
+	Graded int64  `json:"graded"`
+}
+
+type activityDay struct {
+	Day      string            `json:"d"`
+	Count    int64             `json:"c"`
+	OK       int64             `json:"ok"`
+	Graded   int64             `json:"graded"`
+	CostMs   int64             `json:"ms"`
+	Subjects []activitySubject `json:"subjects"`
+}
+
+type activityResponse struct {
+	From          string            `json:"from"`
+	To            string            `json:"to"`
+	StartedOn     string            `json:"startedOn"`
+	ActiveDays    int64             `json:"activeDays"`
+	AllActiveDays int64             `json:"allActiveDays"`
+	CurrentStreak int64             `json:"currentStreak"`
+	LongestStreak int64             `json:"longestStreak"`
+	Total         int64             `json:"total"`
+	Correct       int64             `json:"correct"`
+	Graded        int64             `json:"graded"`
+	CostMs        int64             `json:"ms"`
+	Days          []activityDay     `json:"days"`
+	Subjects      []activitySubject `json:"subjects"`
+}
+
+// activity serves the contribution wall: one entry per day (with a subject
+// breakdown) inside a rolling window, plus streak facts that look at the whole
+// history so "longest streak" is not clipped by the window.
+func (s *Server) activity(w http.ResponseWriter, r *http.Request) {
+	u, _ := userFromContext(r.Context())
+	days := queryInt(r, "days", 371, 7, 1825)
+	now := time.Now()
+	from := now.AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	to := now.Format("2006-01-02")
+
+	dates, startOn, longest, err := s.activityDates(r, u.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL", "读取统计失败")
+		return
+	}
+	current := currentStreak(dates, now)
+
+	resp := activityResponse{
+		From: from, To: to, StartedOn: startOn,
+		CurrentStreak: current, LongestStreak: longest,
+		AllActiveDays: int64(len(dates)),
+		Days:          make([]activityDay, 0), Subjects: make([]activitySubject, 0),
+	}
+
+	rows, err := s.db.QueryContext(r.Context(), `
+		SELECT date(created_at) d, subject,
+		       COUNT(*) c,
+		       COALESCE(SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END), 0) ok,
+		       COALESCE(SUM(CASE WHEN is_correct IS NOT NULL THEN 1 ELSE 0 END), 0) graded,
+		       COALESCE(SUM(cost_ms), 0) ms
+		FROM practice_records
+		WHERE user_id = ? AND date(created_at) >= date(?)
+		GROUP BY d, subject
+		ORDER BY d, c DESC`, u.ID, from)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL", "读取统计失败")
+		return
+	}
+	defer rows.Close()
+	dayIndex := map[string]int{}
+	subjectIndex := map[string]int{}
+	for rows.Next() {
+		var d, subject string
+		var c, ok, graded, ms int64
+		if err := rows.Scan(&d, &subject, &c, &ok, &graded, &ms); err != nil {
+			writeError(w, http.StatusInternalServerError, "INTERNAL", "读取统计失败")
+			return
+		}
+		di, seen := dayIndex[d]
+		if !seen {
+			di = len(resp.Days)
+			dayIndex[d] = di
+			resp.Days = append(resp.Days, activityDay{Day: d, Subjects: make([]activitySubject, 0)})
+		}
+		day := &resp.Days[di]
+		day.Count += c
+		day.OK += ok
+		day.Graded += graded
+		day.CostMs += ms
+		if subject != "" {
+			day.Subjects = append(day.Subjects, activitySubject{Name: subject, Count: c, OK: ok, Graded: graded})
+
+			si, seen := subjectIndex[subject]
+			if !seen {
+				si = len(resp.Subjects)
+				subjectIndex[subject] = si
+				resp.Subjects = append(resp.Subjects, activitySubject{Name: subject})
+			}
+			resp.Subjects[si].Count += c
+			resp.Subjects[si].OK += ok
+			resp.Subjects[si].Graded += graded
+		}
+
+		resp.Total += c
+		resp.Correct += ok
+		resp.Graded += graded
+		resp.CostMs += ms
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL", "读取统计失败")
+		return
+	}
+	resp.ActiveDays = int64(len(resp.Days))
+	sort.SliceStable(resp.Subjects, func(i, j int) bool {
+		return resp.Subjects[i].Count > resp.Subjects[j].Count
+	})
+	for i := range resp.Days {
+		sort.SliceStable(resp.Days[i].Subjects, func(a, b int) bool {
+			return resp.Days[i].Subjects[a].Count > resp.Days[i].Subjects[b].Count
+		})
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) activityDates(r *http.Request, userID int64) (map[string]bool, string, int64, error) {
+	rows, err := s.db.QueryContext(r.Context(), `
+		SELECT date(created_at) d FROM practice_records
+		WHERE user_id = ? GROUP BY d ORDER BY d`, userID)
+	if err != nil {
+		return nil, "", 0, err
+	}
+	defer rows.Close()
+	dates := map[string]bool{}
+	started := ""
+	var longest, run int64
+	var prev time.Time
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return nil, "", 0, err
+		}
+		d, err := time.ParseInLocation("2006-01-02", raw, time.Local)
+		if err != nil {
+			continue
+		}
+		dates[raw] = true
+		if started == "" {
+			started = raw
+		}
+		if !prev.IsZero() && d.Sub(prev) == 24*time.Hour {
+			run++
+		} else {
+			run = 1
+		}
+		if run > longest {
+			longest = run
+		}
+		prev = d
+	}
+	return dates, started, longest, rows.Err()
+}
+
+func currentStreak(dates map[string]bool, now time.Time) int64 {
+	if len(dates) == 0 {
+		return 0
+	}
+	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	if !dates[day.Format("2006-01-02")] {
+		day = day.AddDate(0, 0, -1)
+	}
+	var streak int64
+	for dates[day.Format("2006-01-02")] {
+		streak++
+		day = day.AddDate(0, 0, -1)
+	}
+	return streak
 }
 
 type customBatch struct {

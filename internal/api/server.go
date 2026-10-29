@@ -62,6 +62,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/check", s.requireAuth(http.HandlerFunc(s.check)))
 	mux.Handle("POST /api/records", s.requireAuth(http.HandlerFunc(s.submitRecord)))
 	mux.Handle("GET /api/records/stats", s.requireAuth(http.HandlerFunc(s.stats)))
+	mux.Handle("GET /api/records/activity", s.requireAuth(http.HandlerFunc(s.activity)))
 	mux.Handle("GET /api/records/recent", s.requireAuth(http.HandlerFunc(s.recent)))
 	mux.Handle("GET /api/records/wrong/groups", s.requireAuth(http.HandlerFunc(s.wrongGroups)))
 	mux.Handle("/api/records/wrong", s.requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
