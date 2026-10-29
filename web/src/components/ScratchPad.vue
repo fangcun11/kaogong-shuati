@@ -2,6 +2,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 type Tool = 'pen' | 'eraser'
+type Mode = 'sheet' | 'clear'
 interface Stroke {
   tool: Tool
   width: number
@@ -11,17 +12,37 @@ interface Stroke {
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 
-const PAPER = '#fbfaf6'
-const INK = '#1f2a3c'
+const INK_LIGHT = '#1f2a3c'
+const INK_DARK = '#e9eef8'
 const PEN_WIDTH = 2.4
 const ERASER_WIDTH = 18
+const MODE_KEY = 'kg_scratch_mode'
 
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 const wrapEl = ref<HTMLElement | null>(null)
 const tool = ref<Tool>('pen')
+const mode = ref<Mode>(readMode())
 const strokes = ref<Stroke[]>([])
 let drawing: Stroke | null = null
 let observer: ResizeObserver | null = null
+
+function readMode(): Mode {
+  try {
+    return localStorage.getItem(MODE_KEY) === 'clear' ? 'clear' : 'sheet'
+  } catch {
+    return 'sheet'
+  }
+}
+
+function toggleMode() {
+  mode.value = mode.value === 'sheet' ? 'clear' : 'sheet'
+  try {
+    localStorage.setItem(MODE_KEY, mode.value)
+  } catch {
+    /* optional */
+  }
+  nextTick(() => requestAnimationFrame(resize))
+}
 
 function ctxOf() {
   return canvasEl.value?.getContext('2d') || null
@@ -32,11 +53,21 @@ function cssSize() {
   return el ? { w: el.clientWidth, h: el.clientHeight } : { w: 0, h: 0 }
 }
 
+function isDark() {
+  return document.documentElement.getAttribute('data-theme') === 'dark'
+}
+
+function inkColor() {
+  // 纸面弹层始终是浅色纸；只有深色主题的半透明模式才用浅色笔迹
+  return isDark() && mode.value === 'clear' ? INK_DARK : INK_LIGHT
+}
+
 function paint(ctx: CanvasRenderingContext2D, s: Stroke) {
   const pts = s.points
   if (!pts.length) return
-  ctx.strokeStyle = s.tool === 'eraser' ? PAPER : INK
-  ctx.fillStyle = ctx.strokeStyle
+  ctx.globalCompositeOperation = s.tool === 'eraser' ? 'destination-out' : 'source-over'
+  ctx.strokeStyle = inkColor()
+  ctx.fillStyle = inkColor()
   ctx.lineWidth = s.width
   if (pts.length === 1) {
     ctx.beginPath()
@@ -115,7 +146,8 @@ function onMove(e: PointerEvent) {
   drawing.points.push(pt)
   const ctx = ctxOf()
   if (!ctx) return
-  ctx.strokeStyle = drawing.tool === 'eraser' ? PAPER : INK
+  ctx.globalCompositeOperation = drawing.tool === 'eraser' ? 'destination-out' : 'source-over'
+  ctx.strokeStyle = inkColor()
   ctx.lineWidth = drawing.width
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
@@ -192,14 +224,23 @@ defineExpose({ reset })
 </script>
 
 <template>
-  <div v-show="open" class="scratch-overlay" @click.self="close">
-    <section class="scratch-panel" role="dialog" aria-modal="true" aria-label="草稿纸">
+  <div v-show="open" class="scratch-overlay" :class="`mode-${mode}`" @click.self="close">
+    <section class="scratch-panel" :class="`mode-${mode}`" role="dialog" aria-modal="true" aria-label="草稿纸">
       <header class="scratch-head">
-        <div>
+        <div class="scratch-title">
           <b>草稿纸</b>
-          <span>手写计算 · 离开练习即清空</span>
+          <span class="scratch-sub">手写计算 · 离开练习即清空</span>
         </div>
-        <button class="scratch-close" @click="close">收起</button>
+        <div class="scratch-head-actions">
+          <button
+            class="mode-btn"
+            :title="mode === 'sheet' ? '改为半透明覆盖，能看见题目' : '改为纸面弹层，遮挡页面'"
+            @click="toggleMode"
+          >
+            {{ mode === 'sheet' ? '半透明' : '纸面' }}
+          </button>
+          <button class="scratch-close" @click="close">收起</button>
+        </div>
       </header>
 
       <div class="scratch-tools">
@@ -254,15 +295,41 @@ defineExpose({ reset })
   justify-content: space-between;
   gap: 12px;
 }
+.scratch-title {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .scratch-head b {
   font-size: 15px;
   color: var(--text);
+  white-space: nowrap;
 }
-.scratch-head span {
+.scratch-sub {
   margin-left: 8px;
   font-size: 11px;
   color: var(--text-3);
 }
+.scratch-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.mode-btn {
+  flex: none;
+  padding: 6px 11px;
+  border: 1px solid var(--primary);
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mode-btn:hover { background: var(--primary); color: #fff; }
 .scratch-close {
   flex: none;
   padding: 6px 12px;
@@ -329,6 +396,57 @@ defineExpose({ reset })
   text-align: center;
   pointer-events: none;
 }
+
+/* 半透明覆盖：整页铺满，能看见下面的题目，工具栏和抬头浮在画布上 */
+.scratch-overlay.mode-clear {
+  background: transparent;
+  backdrop-filter: none;
+}
+.scratch-panel.mode-clear {
+  position: relative;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.scratch-panel.mode-clear .scratch-head {
+  position: absolute;
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  left: 12px;
+  right: 12px;
+  z-index: 3;
+  padding: 9px 10px 9px 14px;
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: 0 6px 22px rgba(15, 23, 42, .14);
+}
+.scratch-panel.mode-clear .scratch-tools {
+  position: absolute;
+  left: 50%;
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  z-index: 3;
+  margin: 0;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 6px 22px rgba(15, 23, 42, .14);
+  transform: translateX(-50%);
+}
+.scratch-panel.mode-clear .scratch-canvas-wrap {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.scratch-panel.mode-clear .scratch-hint { color: rgba(80, 74, 62, .5); }
+/* 深色主题下垫一层深色玻璃，笔迹改用浅色，保证两边都看得清 */
+html[data-theme='dark'] .scratch-panel.mode-clear .scratch-canvas-wrap {
+  background: rgba(10, 15, 24, .58);
+}
+html[data-theme='dark'] .scratch-panel.mode-clear .scratch-hint { color: rgba(226, 230, 240, .42); }
 </style>
 
 <style>
