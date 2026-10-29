@@ -123,7 +123,7 @@ web/src/
 | `#/practice/:subject?generated=1` | 智能组卷结果 | `POST /api/paper/generate` → sessionStorage |
 | `#/practice/:subject?batchId=` | 自定义题练习 | `GET /api/custom/practice` |
 | `#/papers` | 智能组卷配置 | `POST /api/paper/generate` |
-| `#/stats` | 统计 | `GET /api/records/stats` |
+| `#/stats` | 学习足迹 / 趋势与明细 | `GET /api/records/stats`、`GET /api/records/activity` |
 | `#/wrong` | 错题本 | `GET /api/records/wrong` |
 | `#/favorites` | 收藏 | `GET /api/favorites`、`DELETE /api/favorites` |
 | `#/notes` | 笔记 | `GET /api/notes`、`DELETE /api/notes` |

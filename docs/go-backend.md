@@ -35,7 +35,7 @@ go run ./cmd/kaogong
 - `POST /api/auth/password`
 - 管理员：`GET/POST /api/admin/users`，`PATCH /api/admin/users/{id}`
 - 题库：subjects、categories、papers、chapters、practice、question、materials
-- 记录：`POST /api/check`、`POST /api/records`、stats、recent、wrong、wrong/groups
+- 记录：`POST /api/check`、`POST /api/records`、stats、activity、recent、wrong、wrong/groups
 - 收藏、笔记、整理
 - 智能组卷：`POST /api/paper/generate`（基础版，按模块配额抽题）
 - 自定义题库：导入、批次、题目编辑、材料分组、练习、判分

@@ -190,6 +190,7 @@ type activitySubject struct {
 	Count  int64  `json:"c"`
 	OK     int64  `json:"ok"`
 	Graded int64  `json:"graded"`
+	CostMs int64  `json:"ms"`
 }
 
 type activityDay struct {
@@ -277,7 +278,7 @@ func (s *Server) activity(w http.ResponseWriter, r *http.Request) {
 		day.Graded += graded
 		day.CostMs += ms
 		if subject != "" {
-			day.Subjects = append(day.Subjects, activitySubject{Name: subject, Count: c, OK: ok, Graded: graded})
+			day.Subjects = append(day.Subjects, activitySubject{Name: subject, Count: c, OK: ok, Graded: graded, CostMs: ms})
 
 			si, seen := subjectIndex[subject]
 			if !seen {
@@ -288,6 +289,7 @@ func (s *Server) activity(w http.ResponseWriter, r *http.Request) {
 			resp.Subjects[si].Count += c
 			resp.Subjects[si].OK += ok
 			resp.Subjects[si].Graded += graded
+			resp.Subjects[si].CostMs += ms
 		}
 
 		resp.Total += c

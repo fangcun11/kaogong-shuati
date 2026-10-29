@@ -29,6 +29,7 @@ type activityResp struct {
 			Count  int64  `json:"c"`
 			OK     int64  `json:"ok"`
 			Graded int64  `json:"graded"`
+			CostMs int64  `json:"ms"`
 		} `json:"subjects"`
 	} `json:"days"`
 	Subjects []struct {
@@ -36,6 +37,7 @@ type activityResp struct {
 		Count  int64  `json:"c"`
 		OK     int64  `json:"ok"`
 		Graded int64  `json:"graded"`
+		CostMs int64  `json:"ms"`
 	} `json:"subjects"`
 }
 
@@ -150,12 +152,19 @@ func TestActivityAggregatesByDayAndStreak(t *testing.T) {
 	if len(today.Subjects) != 2 || today.Subjects[0].Name != "公务员·行测" || today.Subjects[0].Count != 2 {
 		t.Fatalf("today subjects = %+v, want 行测 first with 2", today.Subjects)
 	}
+	// The detail table needs per-subject time, not just the day total.
+	if today.Subjects[0].CostMs != 60000 || today.Subjects[1].CostMs != 30000 {
+		t.Fatalf("today subject costs = %d/%d, want 60000/30000", today.Subjects[0].CostMs, today.Subjects[1].CostMs)
+	}
 
 	if len(got.Subjects) != 3 {
 		t.Fatalf("subject totals = %+v, want 3 rows", got.Subjects)
 	}
 	if got.Subjects[0].Name != "公务员·行测" || got.Subjects[0].Count != 4 || got.Subjects[0].OK != 2 {
 		t.Fatalf("top subject = %+v, want 行测 4/2", got.Subjects[0])
+	}
+	if got.Subjects[0].CostMs != 60000 {
+		t.Fatalf("top subject cost = %d, want 60000", got.Subjects[0].CostMs)
 	}
 
 	// A narrower window keeps today's streak but drops the older run.
