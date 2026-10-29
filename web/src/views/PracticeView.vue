@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, post } from '../api/client'
 import Icon from '../components/Icon.vue'
+import ScratchPad from '../components/ScratchPad.vue'
 
 interface Question {
   id?: number | string
@@ -56,6 +57,8 @@ const startedAt = ref(Date.now())
 const finished = ref(false)
 const showCard = ref(false)
 const reciteMode = ref(false)
+const showScratch = ref(false)
+const scratchRef = ref<InstanceType<typeof ScratchPad> | null>(null)
 
 const current = computed(() => questions.value[index.value])
 const currentKey = computed(() => (current.value ? String(current.value.id ?? current.value.questionId) : ''))
@@ -155,6 +158,8 @@ async function load() {
     index.value = 0
     finished.value = false
     noteOpen.value = false
+    showScratch.value = false
+    scratchRef.value?.reset()
     startedAt.value = Date.now()
     if (questions.value.length) {
       await loadFavorites()
@@ -327,6 +332,8 @@ function restart() {
   finished.value = false
   index.value = 0
   showCard.value = false
+  showScratch.value = false
+  scratchRef.value?.reset()
   for (const key of Object.keys(answers)) delete answers[key]
   startedAt.value = Date.now()
 }
@@ -352,6 +359,7 @@ onMounted(load)
       <span class="tag tag-difficulty">难度 {{ current?.difficulty || '—' }}</span>
       <span class="q-actions">
         <button class="q-card-btn" title="答题卡" @click="showCard = true">▦</button>
+        <button class="q-card-btn" :class="{ on: showScratch }" title="草稿纸" @click="showScratch = true">稿</button>
         <button class="q-card-btn" :class="{ on: reciteMode }" title="背题模式" @click="reciteMode = !reciteMode">背</button>
         <button class="q-fav" :class="{ on: isFavorite }" title="收藏" @click="toggleFavorite">
           <Icon name="star" :size="15" />
@@ -448,6 +456,8 @@ onMounted(load)
         </div>
       </div>
     </div>
+
+    <ScratchPad ref="scratchRef" :open="showScratch" @close="showScratch = false" />
 
     <div v-if="error" class="vue-inline-error">{{ error }}</div>
   </template>

@@ -80,6 +80,7 @@ web/src/
 ├── stores/session.ts          user / ready / login / logout
 ├── router/index.ts            hash 路由 + 登录守卫
 ├── components/Icon.vue        内联 SVG 图标
+├── components/ScratchPad.vue  刷题页草稿纸（canvas 手写）
 ├── views/
 │   ├── LoginView.vue
 │   ├── HomeView.vue
@@ -176,6 +177,15 @@ POST /api/records { questionId, subject, chapter, type, selected, correct, costM
 - 答题卡状态：`current` / `todo` / `correct` / `wrong` / `answered`
 - 背题模式不选答案、不提交、不写记录，直接高亮正确项并显示解析
 - 结果页统计由 `answers` 派生，不依赖后端汇总
+
+### 草稿纸
+
+`components/ScratchPad.vue`，入口是做题页 `q-actions` 里的「稿」按钮：
+
+- 底部升起的画布面板（`88vh`，桌面最宽 760px），打开时 `body` 加 `scratch-open` 锁滚动，关闭/卸载/Esc 都恢复
+- 笔 / 橡皮 / 撤销 / 清空；笔画按 `{tool, width, points}` 存在内存里，窗口尺寸变化时按 devicePixelRatio 重绘
+- 画布始终是纸色 `#fbfaf6`，深色模式下也只换面板，不换纸色
+- 一次练习共用一张纸：换题保留，`load()` 新练习和「再来一组」时通过 `defineExpose({ reset })` 清空；不落库，离开练习即丢弃
 
 ### 首页
 
